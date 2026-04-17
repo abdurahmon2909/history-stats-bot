@@ -28,6 +28,9 @@ WS_CACHE: dict[str, gspread.Worksheet] = {}
 # User row cache: {user_id: row_number}
 USER_ROW_CACHE: dict[int, int] = {}
 
+# User data cache
+USER_DATA_CACHE: dict[int, dict[str, str]] = {}
+
 # Message buffer
 MESSAGE_BUFFER: list[list[str]] = []
 BUFFER_LOCK = asyncio.Lock()
@@ -103,20 +106,37 @@ def _get_ws_sync(title: str):
 
 
 def _warm_user_cache_sync():
-    global USER_ROW_CACHE
+    global USER_ROW_CACHE, USER_DATA_CACHE
 
     ws = _get_ws_sync(WS_USERS)
     values = _retry_sync(ws.get_all_values)
 
     USER_ROW_CACHE = {}
+    USER_DATA_CACHE = {}
+
     for idx, row in enumerate(values[1:], start=2):
         if not row:
             continue
+
         try:
             user_id = int(str(row[0]).strip())
-            USER_ROW_CACHE[user_id] = idx
         except Exception:
             continue
+
+        full_name = row[1] if len(row) > 1 else ""
+        username = row[2] if len(row) > 2 else ""
+        is_subscribed = row[3] if len(row) > 3 else "0"
+        first_seen = row[4] if len(row) > 4 else ""
+        last_seen = row[5] if len(row) > 5 else ""
+
+        USER_ROW_CACHE[user_id] = idx
+        USER_DATA_CACHE[user_id] = {
+            "full_name": full_name,
+            "username": username,
+            "is_subscribed": is_subscribed,
+            "first_seen": first_seen,
+            "last_seen": last_seen,
+        }
 
 
 async def init_sheets():
@@ -137,10 +157,6 @@ async def init_sheets():
     await asyncio.to_thread(_warm_user_cache_sync)
 
 
-def _find_row_by_user_id_sync(user_id: int) -> int | None:
-    return USER_ROW_CACHE.get(user_id)
-
-
 async def upsert_user(
     user_id: int,
     full_name: str,
@@ -156,43 +172,63 @@ def _upsert_user_sync(
     username: str | None,
     is_subscribed: int | None = None,
 ):
+    global USER_ROW_CACHE, USER_DATA_CACHE
+
     ws = _get_ws_sync(WS_USERS)
     now = datetime.now(timezone.utc).isoformat()
-    row_num = _find_row_by_user_id_sync(user_id)
+    row_num = USER_ROW_CACHE.get(user_id)
 
     if row_num:
-        row = _retry_sync(ws.row_values, row_num)
-        current_sub = row[3] if len(row) > 3 else "0"
-        first_seen = row[4] if len(row) > 4 else now
+        cached = USER_DATA_CACHE.get(user_id, {})
+
+        current_sub = cached.get("is_subscribed", "0")
+        first_seen = cached.get("first_seen", now) or now
         new_sub = str(is_subscribed) if is_subscribed is not None else current_sub
+
+        values = [[
+            str(user_id),
+            full_name,
+            username or "",
+            new_sub,
+            first_seen,
+            now,
+        ]]
 
         _retry_sync(
             ws.update,
             range_name=f"A{row_num}:F{row_num}",
-            values=[[
-                str(user_id),
-                full_name,
-                username or "",
-                new_sub,
-                first_seen,
-                now,
-            ]]
+            values=values
         )
+
+        USER_DATA_CACHE[user_id] = {
+            "full_name": full_name,
+            "username": username or "",
+            "is_subscribed": new_sub,
+            "first_seen": first_seen,
+            "last_seen": now,
+        }
+
     else:
-        _retry_sync(
-            ws.append_row,
-            [
-                str(user_id),
-                full_name,
-                username or "",
-                str(is_subscribed or 0),
-                now,
-                now,
-            ]
-        )
+        values = [
+            str(user_id),
+            full_name,
+            username or "",
+            str(is_subscribed or 0),
+            now,
+            now,
+        ]
+
+        _retry_sync(ws.append_row, values)
 
         current_rows = _retry_sync(lambda: len(ws.col_values(1)))
         USER_ROW_CACHE[user_id] = current_rows
+        USER_DATA_CACHE[user_id] = {
+            "full_name": full_name,
+            "username": username or "",
+            "is_subscribed": str(is_subscribed or 0),
+            "first_seen": now,
+            "last_seen": now,
+        }
 
 
 async def append_group_message(
