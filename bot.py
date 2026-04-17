@@ -4,8 +4,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime, timezone
-from aiogram.exceptions import TelegramBadRequest
-from aiogram.enums import ChatMemberStatus
+
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ChatMemberStatus, ChatType
 from aiogram.exceptions import TelegramBadRequest
@@ -21,7 +20,8 @@ from aiogram.types import (
 from config import (
     BOT_TOKEN,
     GROUP_CHAT_ID,
-    CHANNEL_USERNAME,
+    CHANNEL_ID,
+    CHANNEL_LINK,
     ADMIN_IDS,
 )
 from sheets import (
@@ -67,21 +67,17 @@ def admin_menu_kb() -> InlineKeyboardMarkup:
 
 
 def join_channel_kb() -> InlineKeyboardMarkup:
-    channel_url = f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}"
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Kanalga o'tish", url=channel_url)],
+            [InlineKeyboardButton(text="Kanalga o'tish", url=CHANNEL_LINK)],
             [InlineKeyboardButton(text="Qayta tekshirish", callback_data="check_sub")],
         ]
     )
 
 
-from aiogram.exceptions import TelegramBadRequest
-from aiogram.enums import ChatMemberStatus
-
 async def check_subscription(user_id: int) -> tuple[bool, str]:
     try:
-        member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
+        member = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
         is_subscribed = member.status in {
             ChatMemberStatus.MEMBER,
             ChatMemberStatus.ADMINISTRATOR,
@@ -93,7 +89,9 @@ async def check_subscription(user_id: int) -> tuple[bool, str]:
         err = str(e).lower()
 
         if "member list is inaccessible" in err:
-            logging.error("Bot kanal a'zolarini ko'ra olmayapti. Botni kanalga admin qiling.")
+            logging.error(
+                "Kanal a'zoligini tekshirib bo'lmadi: bot kanalga qo'shilmagan yoki admin emas"
+            )
             return False, "inaccessible"
 
         logging.exception("Obunani tekshirishda Telegram xatosi: %s", e)
@@ -103,10 +101,7 @@ async def check_subscription(user_id: int) -> tuple[bool, str]:
         logging.exception("Obunani tekshirishda xato: %s", e)
         return False, "error"
 
-@router.channel_post()
-async def get_channel_id(message: Message):
-    print("CHANNEL ID:", message.chat.id)
-    
+
 @router.message(CommandStart())
 async def start_handler(message: Message):
     user = message.from_user
@@ -131,7 +126,7 @@ async def start_handler(message: Message):
 
     if not subscribed:
         await message.answer(
-            f"Botdan foydalanish uchun avval {CHANNEL_USERNAME} kanaliga a'zo bo'ling.",
+            "Botdan foydalanish uchun avval kanalga a'zo bo'ling.",
             reply_markup=join_channel_kb(),
         )
         return
@@ -169,6 +164,13 @@ async def check_subscription_callback(callback: CallbackQuery):
     if status == "inaccessible":
         await callback.answer(
             "Bot kanal a'zoligini tekshira olmayapti. Admin botni kanalga admin qilishi kerak.",
+            show_alert=True,
+        )
+        return
+
+    if status == "error":
+        await callback.answer(
+            "Tekshiruvda xatolik bo'ldi. Keyinroq qayta urinib ko'ring.",
             show_alert=True,
         )
         return
@@ -294,7 +296,7 @@ async def private_message_router(message: Message):
     if message.text and message.text.startswith("/"):
         return
 
-    subscribed = await check_subscription(user.id)
+    subscribed, status = await check_subscription(user.id)
 
     await upsert_user(
         user_id=user.id,
@@ -303,9 +305,16 @@ async def private_message_router(message: Message):
         is_subscribed=1 if subscribed else 0,
     )
 
+    if status == "inaccessible":
+        await message.answer(
+            "Hozircha kanal obunasini avtomatik tekshirib bo'lmadi.\n"
+            "Keyinroq urinib ko'ring."
+        )
+        return
+
     if not subscribed:
         await message.answer(
-            f"Avval {CHANNEL_USERNAME} kanaliga a'zo bo'ling.",
+            "Avval kanalga a'zo bo'ling.",
             reply_markup=join_channel_kb(),
         )
         return
