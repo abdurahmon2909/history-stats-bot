@@ -103,7 +103,10 @@ async def check_subscription(user_id: int) -> tuple[bool, str]:
         logging.exception("Obunani tekshirishda xato: %s", e)
         return False, "error"
 
-
+@router.channel_post()
+async def get_channel_id(message: Message):
+    print("CHANNEL ID:", message.chat.id)
+    
 @router.message(CommandStart())
 async def start_handler(message: Message):
     user = message.from_user
