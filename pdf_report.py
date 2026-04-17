@@ -117,7 +117,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         usable_width = page_width - doc.leftMargin - doc.rightMargin
 
         # Banner balandligi: kerak bo'lsa o'zgartirasiz
-        banner_height = 55 * mm
+        banner_height = 85 * mm
 
         img = Image(logo_path, width=usable_width, height=banner_height)
         img.hAlign = "CENTER"
