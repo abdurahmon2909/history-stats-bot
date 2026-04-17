@@ -126,6 +126,12 @@ async def start_handler(message: Message):
         )
         return
 
+    if status == "error":
+        await message.answer(
+            "Tekshiruvda xatolik bo'ldi. Keyinroq qayta urinib ko'ring."
+        )
+        return
+
     if not subscribed:
         await message.answer(
             "Botdan foydalanish uchun avval kanalga a'zo bo'ling.",
@@ -281,13 +287,6 @@ async def group_message_tracker(message: Message):
         sent_at=message.date.astimezone(timezone.utc),
     )
 
-    await upsert_user(
-        user_id=message.from_user.id,
-        full_name=message.from_user.full_name,
-        username=message.from_user.username,
-        is_subscribed=None,
-    )
-
 
 @router.message(F.chat.type == ChatType.PRIVATE)
 async def private_message_router(message: Message):
@@ -314,6 +313,12 @@ async def private_message_router(message: Message):
         )
         return
 
+    if status == "error":
+        await message.answer(
+            "Tekshiruvda xatolik bo'ldi. Keyinroq qayta urinib ko'ring."
+        )
+        return
+
     if not subscribed:
         await message.answer(
             "Avval kanalga a'zo bo'ling.",
@@ -321,13 +326,20 @@ async def private_message_router(message: Message):
         )
         return
 
-    sender_info = (
-        f"Yangi murojaat\n\n"
-        f"Ism: {user.full_name}\n"
-        f"Username: @{user.username}" if user.username
-        else f"Yangi murojaat\n\nIsm: {user.full_name}\nUsername: yo'q"
-    )
-    sender_info += f"\nUser ID: {user.id}"
+    if user.username:
+        sender_info = (
+            f"Yangi murojaat\n\n"
+            f"Ism: {user.full_name}\n"
+            f"Username: @{user.username}\n"
+            f"User ID: {user.id}"
+        )
+    else:
+        sender_info = (
+            f"Yangi murojaat\n\n"
+            f"Ism: {user.full_name}\n"
+            f"Username: yo'q\n"
+            f"User ID: {user.id}"
+        )
 
     for admin_id in ADMIN_IDS:
         try:
