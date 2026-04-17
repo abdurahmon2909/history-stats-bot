@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ChatMemberStatus, ChatType
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandStart, Command
 from aiogram.types import (
     Message,
@@ -18,7 +19,6 @@ from aiogram.types import (
 
 from config import (
     BOT_TOKEN,
-    BOT_USERNAME,
     GROUP_CHAT_ID,
     CHANNEL_USERNAME,
     ADMIN_IDS,
@@ -67,15 +67,12 @@ def admin_menu_kb() -> InlineKeyboardMarkup:
 
 def join_channel_kb() -> InlineKeyboardMarkup:
     channel_url = f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}"
-    bot_link = f"https://t.me/{BOT_USERNAME}" if BOT_USERNAME else None
-
-    rows = [
-        [InlineKeyboardButton(text="Kanalga o'tish", url=channel_url)],
-    ]
-    if bot_link:
-        rows.append([InlineKeyboardButton(text="Qayta tekshirish", url=bot_link)])
-
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Kanalga o'tish", url=channel_url)],
+            [InlineKeyboardButton(text="Qayta tekshirish", callback_data="check_sub")],
+        ]
+    )
 
 
 async def check_subscription(user_id: int) -> bool:
@@ -86,6 +83,15 @@ async def check_subscription(user_id: int) -> bool:
             ChatMemberStatus.ADMINISTRATOR,
             ChatMemberStatus.OWNER,
         }
+    except TelegramBadRequest as e:
+        err = str(e).lower()
+        if "member list is inaccessible" in err:
+            logging.error(
+                "Kanal a'zoligini tekshirib bo'lmadi: bot kanalga qo'shilmagan yoki admin emas"
+            )
+            return False
+        logging.exception("Obunani tekshirishda Telegram xatosi: %s", e)
+        return False
     except Exception as e:
         logging.exception("Obunani tekshirishda xato: %s", e)
         return False
@@ -97,20 +103,18 @@ async def start_handler(message: Message):
     if not user:
         return
 
-    full_name = user.full_name
-    username = user.username
-
     subscribed = await check_subscription(user.id)
+
     await upsert_user(
         user_id=user.id,
-        full_name=full_name,
-        username=username,
+        full_name=user.full_name,
+        username=user.username,
         is_subscribed=1 if subscribed else 0,
     )
 
     if not subscribed:
         await message.answer(
-            "Botdan foydalanish uchun avval @Tarixaudiokurs kanaliga a'zo bo'ling.",
+            f"Botdan foydalanish uchun avval {CHANNEL_USERNAME} kanaliga a'zo bo'ling.",
             reply_markup=join_channel_kb(),
         )
         return
@@ -127,11 +131,41 @@ async def start_handler(message: Message):
         "Siz yuborgan xabarlar adminlarga yetkaziladi."
     )
 
-from aiogram.filters import Command
 
-@router.message(Command("id"))
-async def get_id(message: Message):
-    await message.answer(f"Chat ID: {message.chat.id}")
+@router.callback_query(F.data == "check_sub")
+async def check_subscription_callback(callback: CallbackQuery):
+    user = callback.from_user
+    if not user:
+        await callback.answer("Foydalanuvchi topilmadi", show_alert=True)
+        return
+
+    subscribed = await check_subscription(user.id)
+
+    await upsert_user(
+        user_id=user.id,
+        full_name=user.full_name,
+        username=user.username,
+        is_subscribed=1 if subscribed else 0,
+    )
+
+    if not subscribed:
+        await callback.answer("Siz hali kanalga a'zo bo'lmagansiz", show_alert=True)
+        return
+
+    await callback.answer("Obuna tasdiqlandi ✅")
+
+    if is_admin(user.id):
+        await callback.message.edit_text(
+            "Admin panel ochildi. Quyidan statistika periodini tanlang:",
+            reply_markup=admin_menu_kb(),
+        )
+    else:
+        await callback.message.edit_text(
+            "Obuna tasdiqlandi ✅\n\n"
+            "Xush kelibsiz.\n"
+            "Siz yuborgan xabarlar adminlarga yetkaziladi."
+        )
+
 
 @router.message(Command("admin"))
 async def admin_command(message: Message):
@@ -143,6 +177,11 @@ async def admin_command(message: Message):
         "Statistika periodini tanlang:",
         reply_markup=admin_menu_kb(),
     )
+
+
+@router.message(Command("id"))
+async def get_id(message: Message):
+    await message.answer(f"Chat ID: {message.chat.id}")
 
 
 @router.callback_query(F.data.startswith("report:"))
@@ -163,14 +202,14 @@ async def report_callback(callback: CallbackQuery):
     stats = await get_stats_for_hours(GROUP_CHAT_ID, hours)
 
     labels = {
-        2: "Oxirgi 2 soat",
-        4: "Oxirgi 4 soat",
-        8: "Oxirgi 8 soat",
-        24: "Oxirgi 1 kun",
-        72: "Oxirgi 3 kun",
-        168: "Oxirgi 1 hafta",
+        2: "2 soat",
+        4: "4 soat",
+        8: "8 soat",
+        24: "1 kun",
+        72: "3 kun",
+        168: "1 hafta",
     }
-    period_label = labels.get(hours, f"Oxirgi {hours} soat")
+    period_label = labels.get(hours, f"{hours} soat")
 
     os.makedirs("reports", exist_ok=True)
     filename = f"reports/report_{hours}h_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -178,7 +217,7 @@ async def report_callback(callback: CallbackQuery):
     await asyncio.to_thread(build_pdf_report, stats, period_label, filename)
 
     short_text = (
-        f"{period_label}\n"
+        f"So'nggi {period_label} bo'yicha natija tayyor.\n"
         f"Jami xabarlar: {stats['total_messages']}\n"
         f"Faol foydalanuvchilar: {len(stats['users'])}"
     )
@@ -186,7 +225,7 @@ async def report_callback(callback: CallbackQuery):
     await callback.message.answer(short_text)
     await callback.message.answer_document(
         FSInputFile(filename),
-        caption=f"{period_label} bo'yicha PDF hisobot",
+        caption=f"So'nggi {period_label} bo'yicha PDF hisobot",
     )
 
 
@@ -231,6 +270,7 @@ async def private_message_router(message: Message):
         return
 
     subscribed = await check_subscription(user.id)
+
     await upsert_user(
         user_id=user.id,
         full_name=user.full_name,
@@ -240,7 +280,7 @@ async def private_message_router(message: Message):
 
     if not subscribed:
         await message.answer(
-            "Avval @Tarixaudiokurs kanaliga a'zo bo'ling.",
+            f"Avval {CHANNEL_USERNAME} kanaliga a'zo bo'ling.",
             reply_markup=join_channel_kb(),
         )
         return
@@ -248,7 +288,8 @@ async def private_message_router(message: Message):
     sender_info = (
         f"Yangi murojaat\n\n"
         f"Ism: {user.full_name}\n"
-        f"Username: @{user.username}" if user.username else f"Yangi murojaat\n\nIsm: {user.full_name}\nUsername: yo'q"
+        f"Username: @{user.username}" if user.username
+        else f"Yangi murojaat\n\nIsm: {user.full_name}\nUsername: yo'q"
     )
     sender_info += f"\nUser ID: {user.id}"
 
