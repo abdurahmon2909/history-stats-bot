@@ -5,9 +5,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+BOT_USERNAME = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
 
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0").strip())
-CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "@Tarixaudiokurs").strip()
+
+CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0").strip())
+CHANNEL_LINK = os.getenv("CHANNEL_LINK", "").strip()
 
 ADMIN_IDS = [
     int(x.strip())
@@ -23,6 +26,12 @@ if not BOT_TOKEN:
 
 if not GROUP_CHAT_ID:
     raise ValueError("GROUP_CHAT_ID topilmadi")
+
+if not CHANNEL_ID:
+    raise ValueError("CHANNEL_ID topilmadi")
+
+if not CHANNEL_LINK:
+    raise ValueError("CHANNEL_LINK topilmadi")
 
 if not ADMIN_IDS:
     raise ValueError("ADMIN_IDS topilmadi")
