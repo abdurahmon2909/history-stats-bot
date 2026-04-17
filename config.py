@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-BOT_USERNAME = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
 
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0").strip())
 CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "@Tarixaudiokurs").strip()
