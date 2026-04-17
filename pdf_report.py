@@ -100,11 +100,9 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
 
     story = []
 
-    # LOGO
     possible_logo_paths = [
         "logo.png",
         "logo.jpg",
-        "/mnt/data/390f981e-11a6-4fe4-b368-8011a337e294.png",
     ]
     logo_path = next((p for p in possible_logo_paths if os.path.exists(p)), None)
     if logo_path:
@@ -113,7 +111,6 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         story.append(img)
         story.append(Spacer(1, 4))
 
-    # LINK + REKLAMA
     story.append(
         Paragraph("https://t.me/Tarixaudiokurs", style_link)
     )
@@ -125,7 +122,6 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         )
     )
 
-    # ASOSIY SARLAVHA
     story.append(
         Paragraph(
             f"So‘nggi {period_label} bo‘yicha faollik natijalari",
@@ -144,7 +140,6 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
     story.append(Paragraph(f"Faol foydalanuvchilar soni: <b>{len(users)}</b>", style_info))
     story.append(Spacer(1, 8))
 
-    # TOIFALAR SUMMARY
     category_counts = {
         "Faol": 0,
         "Yaxshi": 0,
@@ -187,7 +182,6 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
     story.append(summary_table)
     story.append(Spacer(1, 10))
 
-    # TOP 3
     if users:
         top3 = users[:3]
         top3_rows = [[
@@ -223,7 +217,6 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         story.append(top3_table)
         story.append(Spacer(1, 10))
 
-    # ASOSIY JADVAL
     data = [[
         "No",
         "Ism",
@@ -264,7 +257,6 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]
 
-    # Toifa bo'yicha rang
     for row_idx, user in enumerate(users, start=1):
         cat = user["category"]
         if cat == "Faol":
