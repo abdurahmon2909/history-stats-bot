@@ -37,6 +37,11 @@ FLUSH_TASK: asyncio.Task | None = None
 FLUSH_INTERVAL_SECONDS = 3
 MAX_BUFFER_SIZE = 25
 
+# Statistikadan chiqarib tashlanadigan userlar
+EXCLUDED_USER_IDS = {
+    159312129,  # Fazliddin Burxonov
+}
+
 
 def _connect_sync():
     global gc, spreadsheet
@@ -48,13 +53,10 @@ def _connect_sync():
 
 
 def _retry_sync(func, *args, **kwargs):
-    """
-    Simple retry wrapper for transient Google Sheets API failures.
-    """
     delays = [1, 2, 4, 8]
     last_error = None
 
-    for attempt, delay in enumerate([0] + delays, start=1):
+    for delay in [0] + delays:
         try:
             if delay:
                 time.sleep(delay)
@@ -101,9 +103,6 @@ def _get_ws_sync(title: str):
 
 
 def _warm_user_cache_sync():
-    """
-    Reads the users worksheet once and caches user_id -> row_number.
-    """
     global USER_ROW_CACHE
 
     ws = _get_ws_sync(WS_USERS)
@@ -139,9 +138,7 @@ async def init_sheets():
 
 
 def _find_row_by_user_id_sync(user_id: int) -> int | None:
-    if user_id in USER_ROW_CACHE:
-        return USER_ROW_CACHE[user_id]
-    return None
+    return USER_ROW_CACHE.get(user_id)
 
 
 async def upsert_user(
@@ -194,8 +191,6 @@ def _upsert_user_sync(
             ]
         )
 
-        # New row number = current worksheet row count after append
-        # Better than reading all rows again.
         current_rows = _retry_sync(lambda: len(ws.col_values(1)))
         USER_ROW_CACHE[user_id] = current_rows
 
@@ -245,7 +240,6 @@ async def flush_message_buffer():
     try:
         await asyncio.to_thread(_append_rows_sync, rows_to_write)
     except Exception:
-        # If writing fails, return rows back to buffer to avoid data loss
         async with BUFFER_LOCK:
             MESSAGE_BUFFER[:0] = rows_to_write
         raise
@@ -257,7 +251,6 @@ async def _periodic_flush_loop():
         try:
             await flush_message_buffer()
         except Exception:
-            # suppress loop crash; next cycle will retry
             pass
 
 
@@ -281,17 +274,17 @@ async def stop_background_flush():
 
 
 def classify_activity(share_percent: float) -> str:
-    if share_percent >= 15:
+    # Yumshatilgan thresholdlar
+    if share_percent >= 10:
         return "Faol"
-    if share_percent >= 8:
+    if share_percent >= 5:
         return "Yaxshi"
-    if share_percent >= 3:
+    if share_percent >= 2:
         return "O'rtacha"
     return "Qoniqarli"
 
 
 async def get_stats_for_hours(chat_id: int, hours: int) -> dict[str, Any]:
-    # Before report, flush pending rows so report includes fresh data
     await flush_message_buffer()
     return await asyncio.to_thread(_get_stats_for_hours_sync, chat_id, hours)
 
@@ -307,6 +300,10 @@ def _get_stats_for_hours_sync(chat_id: int, hours: int) -> dict[str, Any]:
     for row in rows:
         try:
             if int(str(row.get("chat_id", "0")).strip()) != int(chat_id):
+                continue
+
+            user_id = int(str(row.get("user_id", "0")).strip())
+            if user_id in EXCLUDED_USER_IDS:
                 continue
 
             sent_at_raw = str(row.get("sent_at", "")).strip()
@@ -330,6 +327,8 @@ def _get_stats_for_hours_sync(chat_id: int, hours: int) -> dict[str, Any]:
     for row in filtered:
         try:
             user_id = int(str(row.get("user_id", "0")).strip())
+            if user_id in EXCLUDED_USER_IDS:
+                continue
         except Exception:
             continue
 
