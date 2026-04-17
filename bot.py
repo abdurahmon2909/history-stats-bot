@@ -127,6 +127,11 @@ async def start_handler(message: Message):
         "Siz yuborgan xabarlar adminlarga yetkaziladi."
     )
 
+from aiogram.filters import Command
+
+@router.message(Command("id"))
+async def get_id(message: Message):
+    await message.answer(f"Chat ID: {message.chat.id}")
 
 @router.message(Command("admin"))
 async def admin_command(message: Message):
