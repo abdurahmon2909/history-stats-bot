@@ -311,9 +311,9 @@ async def stop_background_flush():
 
 def classify_activity(share_percent: float) -> str:
     # Yumshatilgan thresholdlar
-    if share_percent >= 10:
-        return "Faol"
     if share_percent >= 5:
+        return "Faol"
+    if share_percent >= 3:
         return "Yaxshi"
     if share_percent >= 2:
         return "O'rtacha"
