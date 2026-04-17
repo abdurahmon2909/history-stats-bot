@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+
 from datetime import datetime
 
 from reportlab.lib import colors
@@ -16,7 +17,8 @@ from reportlab.platypus import (
     Spacer,
     Image,
 )
-
+from zoneinfo import ZoneInfo
+tashkent_tz = ZoneInfo("Asia/Tashkent")
 
 def _safe(val) -> str:
     return str(val or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -146,8 +148,8 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         )
     )
 
-    start_text = stats["start_dt"].strftime("%Y-%m-%d %H:%M:%S UTC+10")
-    end_text = stats["end_dt"].strftime("%Y-%m-%d %H:%M:%S UTC+10")
+    start_text = stats["start_dt"].astimezone(tashkent_tz).strftime("%Y-%m-%d %H:%M:%S UTC+5")
+    end_text = stats["end_dt"].astimezone(tashkent_tz).strftime("%Y-%m-%d %H:%M:%S UTC+5")
     total_messages = stats["total_messages"]
     users = stats["users"]
 
