@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
+
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -100,25 +101,35 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
 
     story = []
 
+    # ===== BANNER / LOGO =====
     possible_logo_paths = [
-    "logo.png",
-    "logo.jpg",
-]
-logo_path = next((p for p in possible_logo_paths if os.path.exists(p)), None)
+        "logo.png",
+        "logo.jpg",
+        "logo.jpeg",
+        "banner.png",
+        "banner.jpg",
+        "banner.jpeg",
+    ]
+    logo_path = next((p for p in possible_logo_paths if os.path.exists(p)), None)
+
     if logo_path:
-    page_width = A4[0]
-    usable_width = page_width - doc.leftMargin - doc.rightMargin
+        page_width = A4[0]
+        usable_width = page_width - doc.leftMargin - doc.rightMargin
 
-    banner_height = usable_width * 0.32  # xohlasangiz 0.28 yoki 0.35 qilib o'zgartirasiz
+        # Banner balandligi: kerak bo'lsa o'zgartirasiz
+        banner_height = 55 * mm
 
-    img = Image(logo_path, width=usable_width, height=banner_height)
-    img.hAlign = "CENTER"
-    story.append(img)
-    story.append(Spacer(1, 6))
+        img = Image(logo_path, width=usable_width, height=banner_height)
+        img.hAlign = "CENTER"
+        story.append(img)
+        story.append(Spacer(1, 6))
 
+    # ===== KANAL LINKI =====
     story.append(
         Paragraph("https://t.me/Tarixaudiokurs", style_link)
     )
+
+    # ===== REKLAMA MATNI =====
     story.append(
         Paragraph(
             "Natija kerak bo‘lsa, bugunoq kursimizga qo‘shiling! "
@@ -127,6 +138,7 @@ logo_path = next((p for p in possible_logo_paths if os.path.exists(p)), None)
         )
     )
 
+    # ===== ASOSIY SARLAVHA =====
     story.append(
         Paragraph(
             f"So‘nggi {period_label} bo‘yicha faollik natijalari",
@@ -145,12 +157,14 @@ logo_path = next((p for p in possible_logo_paths if os.path.exists(p)), None)
     story.append(Paragraph(f"Faol foydalanuvchilar soni: <b>{len(users)}</b>", style_info))
     story.append(Spacer(1, 8))
 
+    # ===== TOIFALAR BO'YICHA SUMMARY =====
     category_counts = {
         "Faol": 0,
         "Yaxshi": 0,
         "O'rtacha": 0,
         "Qoniqarli": 0,
     }
+
     for u in users:
         cat = u.get("category", "Qoniqarli")
         if cat in category_counts:
@@ -171,7 +185,7 @@ logo_path = next((p for p in possible_logo_paths if os.path.exists(p)), None)
         ]
     ]
 
-    summary_table = Table(summary_data, colWidths=[43*mm, 43*mm, 43*mm, 43*mm])
+    summary_table = Table(summary_data, colWidths=[43 * mm, 43 * mm, 43 * mm, 43 * mm])
     summary_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, 1), colors.HexColor("#0b8f55")),
         ("BACKGROUND", (1, 0), (1, 1), colors.HexColor("#1e88e5")),
@@ -187,6 +201,7 @@ logo_path = next((p for p in possible_logo_paths if os.path.exists(p)), None)
     story.append(summary_table)
     story.append(Spacer(1, 10))
 
+    # ===== TOP 3 =====
     if users:
         top3 = users[:3]
         top3_rows = [[
@@ -197,6 +212,7 @@ logo_path = next((p for p in possible_logo_paths if os.path.exists(p)), None)
             Paragraph("<b>Toifa</b>", styles["Normal"]),
         ]]
         medals = ["🥇 1", "🥈 2", "🥉 3"]
+
         for i, u in enumerate(top3):
             top3_rows.append([
                 medals[i],
@@ -206,7 +222,7 @@ logo_path = next((p for p in possible_logo_paths if os.path.exists(p)), None)
                 _safe(u["category"]),
             ])
 
-        top3_table = Table(top3_rows, colWidths=[18*mm, 74*mm, 28*mm, 28*mm, 30*mm])
+        top3_table = Table(top3_rows, colWidths=[18 * mm, 74 * mm, 28 * mm, 28 * mm, 30 * mm])
         top3_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#123b5d")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -222,6 +238,7 @@ logo_path = next((p for p in possible_logo_paths if os.path.exists(p)), None)
         story.append(top3_table)
         story.append(Spacer(1, 10))
 
+    # ===== ASOSIY JADVAL =====
     data = [[
         "No",
         "Ism",
@@ -279,6 +296,7 @@ logo_path = next((p for p in possible_logo_paths if os.path.exists(p)), None)
     story.append(table)
     story.append(Spacer(1, 10))
 
+    # ===== FOOTER =====
     story.append(
         Paragraph(
             f"PDF yaratilgan vaqt: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}",
