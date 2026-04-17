@@ -101,15 +101,20 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
     story = []
 
     possible_logo_paths = [
-        "logo.png",
-        "logo.jpg",
-    ]
-    logo_path = next((p for p in possible_logo_paths if os.path.exists(p)), None)
-    if logo_path:
-        img = Image(logo_path, width=42 * mm, height=42 * mm)
-        img.hAlign = "CENTER"
-        story.append(img)
-        story.append(Spacer(1, 4))
+    "logo.png",
+    "logo.jpg",
+]
+logo_path = next((p for p in possible_logo_paths if os.path.exists(p)), None)
+if logo_path:
+    page_width = A4[0]
+    usable_width = page_width - doc.leftMargin - doc.rightMargin
+
+    banner_height = usable_width * 0.32  # xohlasangiz 0.28 yoki 0.35 qilib o'zgartirasiz
+
+    img = Image(logo_path, width=usable_width, height=banner_height)
+    img.hAlign = "CENTER"
+    story.append(img)
+    story.append(Spacer(1, 6))
 
     story.append(
         Paragraph("https://t.me/Tarixaudiokurs", style_link)
