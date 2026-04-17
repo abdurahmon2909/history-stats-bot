@@ -29,6 +29,8 @@ from sheets import (
     upsert_user,
     append_group_message,
     get_stats_for_hours,
+    start_background_flush,
+    stop_background_flush,
 )
 from pdf_report import build_pdf_report
 
@@ -343,8 +345,12 @@ async def private_message_router(message: Message):
 
 async def main():
     await init_sheets()
+    await start_background_flush()
     logging.info("Google Sheets ga ulanildi")
-    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    try:
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    finally:
+        await stop_background_flush()
 
 
 if __name__ == "__main__":
