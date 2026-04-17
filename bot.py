@@ -4,7 +4,8 @@ import asyncio
 import logging
 import os
 from datetime import datetime, timezone
-
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.enums import ChatMemberStatus
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ChatMemberStatus, ChatType
 from aiogram.exceptions import TelegramBadRequest
@@ -75,26 +76,32 @@ def join_channel_kb() -> InlineKeyboardMarkup:
     )
 
 
-async def check_subscription(user_id: int) -> bool:
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.enums import ChatMemberStatus
+
+async def check_subscription(user_id: int) -> tuple[bool, str]:
     try:
         member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
-        return member.status in {
+        is_subscribed = member.status in {
             ChatMemberStatus.MEMBER,
             ChatMemberStatus.ADMINISTRATOR,
             ChatMemberStatus.OWNER,
         }
+        return is_subscribed, "ok"
+
     except TelegramBadRequest as e:
         err = str(e).lower()
+
         if "member list is inaccessible" in err:
-            logging.error(
-                "Kanal a'zoligini tekshirib bo'lmadi: bot kanalga qo'shilmagan yoki admin emas"
-            )
-            return False
+            logging.error("Bot kanal a'zolarini ko'ra olmayapti. Botni kanalga admin qiling.")
+            return False, "inaccessible"
+
         logging.exception("Obunani tekshirishda Telegram xatosi: %s", e)
-        return False
+        return False, "error"
+
     except Exception as e:
         logging.exception("Obunani tekshirishda xato: %s", e)
-        return False
+        return False, "error"
 
 
 @router.message(CommandStart())
@@ -103,7 +110,7 @@ async def start_handler(message: Message):
     if not user:
         return
 
-    subscribed = await check_subscription(user.id)
+    subscribed, status = await check_subscription(user.id)
 
     await upsert_user(
         user_id=user.id,
@@ -111,6 +118,13 @@ async def start_handler(message: Message):
         username=user.username,
         is_subscribed=1 if subscribed else 0,
     )
+
+    if status == "inaccessible":
+        await message.answer(
+            "Hozircha kanal obunasini avtomatik tekshirib bo'lmadi.\n"
+            "Admin botni kanalga to'liq ulab chiqishi kerak."
+        )
+        return
 
     if not subscribed:
         await message.answer(
@@ -127,7 +141,8 @@ async def start_handler(message: Message):
         return
 
     await message.answer(
-        "Xush kelibsiz.\n\n"
+        "Obuna tasdiqlandi ✅\n\n"
+        "Xush kelibsiz.\n"
         "Siz yuborgan xabarlar adminlarga yetkaziladi."
     )
 
@@ -139,7 +154,7 @@ async def check_subscription_callback(callback: CallbackQuery):
         await callback.answer("Foydalanuvchi topilmadi", show_alert=True)
         return
 
-    subscribed = await check_subscription(user.id)
+    subscribed, status = await check_subscription(user.id)
 
     await upsert_user(
         user_id=user.id,
@@ -147,6 +162,13 @@ async def check_subscription_callback(callback: CallbackQuery):
         username=user.username,
         is_subscribed=1 if subscribed else 0,
     )
+
+    if status == "inaccessible":
+        await callback.answer(
+            "Bot kanal a'zoligini tekshira olmayapti. Admin botni kanalga admin qilishi kerak.",
+            show_alert=True,
+        )
+        return
 
     if not subscribed:
         await callback.answer("Siz hali kanalga a'zo bo'lmagansiz", show_alert=True)
