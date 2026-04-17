@@ -105,7 +105,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
     "logo.jpg",
 ]
 logo_path = next((p for p in possible_logo_paths if os.path.exists(p)), None)
-if logo_path:
+    if logo_path:
     page_width = A4[0]
     usable_width = page_width - doc.leftMargin - doc.rightMargin
 
