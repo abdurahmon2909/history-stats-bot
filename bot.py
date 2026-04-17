@@ -81,7 +81,7 @@ async def check_subscription(user_id: int) -> tuple[bool, str]:
         is_subscribed = member.status in {
             ChatMemberStatus.MEMBER,
             ChatMemberStatus.ADMINISTRATOR,
-            ChatMemberStatus.OWNER,
+            ChatMemberStatus.CREATOR,
         }
         return is_subscribed, "ok"
 
