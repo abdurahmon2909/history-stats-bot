@@ -146,8 +146,8 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         )
     )
 
-    start_text = stats["start_dt"].strftime("%Y-%m-%d %H:%M:%S UTC+5")
-    end_text = stats["end_dt"].strftime("%Y-%m-%d %H:%M:%S UTC+5")
+    start_text = stats["start_dt"].strftime("%Y-%m-%d %H:%M:%S UTC+10")
+    end_text = stats["end_dt"].strftime("%Y-%m-%d %H:%M:%S UTC+10")
     total_messages = stats["total_messages"]
     users = stats["users"]
 
