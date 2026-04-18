@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -18,7 +18,9 @@ from reportlab.platypus import (
     Image,
 )
 from zoneinfo import ZoneInfo
+
 tashkent_tz = ZoneInfo("Asia/Tashkent")
+
 
 def _safe(val) -> str:
     return str(val or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -118,11 +120,14 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         page_width = A4[0]
         usable_width = page_width - doc.leftMargin - doc.rightMargin
 
-        # Banner balandligi: kerak bo'lsa o'zgartirasiz
-        banner_height = 85 * mm
-
-        img = Image(logo_path, width=usable_width, height=banner_height)
+        img = Image(logo_path, width=usable_width, height=None)
+        img.preserveAspectRatio = True
         img.hAlign = "CENTER"
+        
+        max_height = 85 * mm
+        if img.drawHeight > max_height:
+            img.drawHeight = max_height
+        
         story.append(img)
         story.append(Spacer(1, 6))
 
@@ -224,7 +229,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
                 _safe(u["category"]),
             ])
 
-        top3_table = Table(top3_rows, colWidths=[18 * mm, 74 * mm, 28 * mm, 28 * mm, 30 * mm])
+        top3_table = Table(top3_rows, colWidths=[18 * mm, 90 * mm, 28 * mm, 28 * mm, 32 * mm])
         top3_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#123b5d")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -244,7 +249,6 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
     data = [[
         "No",
         "Ism",
-        "Username",
         "Xabarlar",
         "Ulush %",
         "Toifa",
@@ -254,19 +258,18 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         data.append([
             str(idx),
             _safe(user["full_name"]),
-            f"@{_safe(user['username'])}" if user["username"] else "-",
             str(user["msg_count"]),
             str(user["share_percent"]),
             _safe(user["category"]),
         ])
 
     if len(data) == 1:
-        data.append(["-", "Ma'lumot topilmadi", "-", "-", "-", "-"])
+        data.append(["-", "Ma'lumot topilmadi", "-", "-", "-"])
 
     table = Table(
         data,
         repeatRows=1,
-        colWidths=[12 * mm, 58 * mm, 36 * mm, 22 * mm, 22 * mm, 28 * mm]
+        colWidths=[12 * mm, 90 * mm, 28 * mm, 28 * mm, 32 * mm]
     )
 
     base_style = [
@@ -291,7 +294,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
             bg = colors.HexColor("#fff4cc")
         else:
             bg = colors.HexColor("#f3e5dc")
-        base_style.append(("BACKGROUND", (5, row_idx), (5, row_idx), bg))
+        base_style.append(("BACKGROUND", (4, row_idx), (4, row_idx), bg))
 
     table.setStyle(TableStyle(base_style))
     story.append(Paragraph("<b>Batafsil jadval</b>", styles["Heading3"]))
@@ -301,7 +304,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
     # ===== FOOTER =====
     story.append(
         Paragraph(
-            f"PDF yaratilgan vaqt: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}",
+            f"PDF yaratilgan vaqt: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
             styles["Italic"],
         )
     )
