@@ -4,6 +4,7 @@ import asyncio
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -18,6 +19,8 @@ SCOPES = [
 
 WS_USERS = "users"
 WS_MESSAGES = "messages"
+
+TASHKENT_TZ = ZoneInfo("Asia/Tashkent")
 
 gc: gspread.Client | None = None
 spreadsheet = None
@@ -231,6 +234,58 @@ def _upsert_user_sync(
         }
 
 
+def _update_user_fullname_sync(user_id: int, new_full_name: str):
+    """Foydalanuvchining to'liq ismini yangilaydi"""
+    global USER_ROW_CACHE, USER_DATA_CACHE
+    
+    ws = _get_ws_sync(WS_USERS)
+    row_num = USER_ROW_CACHE.get(user_id)
+    
+    if not row_num:
+        now = datetime.now(timezone.utc).isoformat()
+        values = [
+            str(user_id),
+            new_full_name,
+            "",
+            "1",
+            now,
+            now,
+        ]
+        _retry_sync(ws.append_row, values)
+        
+        current_rows = _retry_sync(lambda: len(ws.col_values(1)))
+        USER_ROW_CACHE[user_id] = current_rows
+        USER_DATA_CACHE[user_id] = {
+            "full_name": new_full_name,
+            "username": "",
+            "is_subscribed": "1",
+            "first_seen": now,
+            "last_seen": now,
+        }
+        return
+    
+    cached = USER_DATA_CACHE.get(user_id, {})
+    now = datetime.now(timezone.utc).isoformat()
+    
+    values = [[
+        str(user_id),
+        new_full_name,
+        cached.get("username", ""),
+        cached.get("is_subscribed", "1"),
+        cached.get("first_seen", now),
+        now,
+    ]]
+    
+    _retry_sync(ws.update, range_name=f"A{row_num}:F{row_num}", values=values)
+    
+    USER_DATA_CACHE[user_id]["full_name"] = new_full_name
+    USER_DATA_CACHE[user_id]["last_seen"] = now
+
+
+async def update_user_fullname(user_id: int, full_name: str):
+    await asyncio.to_thread(_update_user_fullname_sync, user_id, full_name)
+
+
 async def append_group_message(
     chat_id: int,
     message_id: int,
@@ -240,6 +295,8 @@ async def append_group_message(
     text: str | None,
     sent_at: datetime,
 ):
+    sent_at_tashkent = sent_at.astimezone(TASHKENT_TZ)
+    
     row = [
         str(chat_id),
         str(message_id),
@@ -247,7 +304,7 @@ async def append_group_message(
         full_name,
         username or "",
         (text or "")[:45000],
-        sent_at.isoformat(),
+        sent_at_tashkent.isoformat(),
     ]
 
     async with BUFFER_LOCK:
@@ -310,7 +367,6 @@ async def stop_background_flush():
 
 
 def classify_activity(share_percent: float) -> str:
-    # Yumshatilgan thresholdlar
     if share_percent >= 5:
         return "Faol"
     if share_percent >= 3:
@@ -348,9 +404,9 @@ def _get_stats_for_hours_sync(chat_id: int, hours: int) -> dict[str, Any]:
 
             sent_at = datetime.fromisoformat(sent_at_raw)
             if sent_at.tzinfo is None:
-                sent_at = sent_at.replace(tzinfo=timezone.utc)
+                sent_at = sent_at.replace(tzinfo=TASHKENT_TZ)
 
-            if sent_at < start_dt:
+            if sent_at < start_dt.replace(tzinfo=TASHKENT_TZ):
                 continue
 
             filtered.append(row)
