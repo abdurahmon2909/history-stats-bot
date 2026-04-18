@@ -26,6 +26,36 @@ def _safe(val) -> str:
     return str(val or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def classify_activity_by_percentile(users: list, total_messages: int) -> list:
+    """
+    Foydalanuvchilarni xabarlar soni bo'yicha saralab,
+    yuqori 10% Faol, keyingi 20% Yaxshi, keyingi 30% O'rtacha, qolgan 40% Qoniqarli
+    """
+    if not users or total_messages == 0:
+        return users
+    
+    # Xabarlar soni bo'yicha saralash (kamayish tartibida)
+    sorted_users = sorted(users, key=lambda x: x["msg_count"], reverse=True)
+    total_users = len(sorted_users)
+    
+    # Foizlar bo'yicha chegaralarni hisoblash
+    faol_limit = int(total_users * 0.1)  # Yuqori 10%
+    yaxshi_limit = faol_limit + int(total_users * 0.2)  # Keyingi 20%
+    ortacha_limit = yaxshi_limit + int(total_users * 0.3)  # Keyingi 30%
+    
+    for idx, user in enumerate(sorted_users):
+        if idx < faol_limit:
+            user["category"] = "Faol"
+        elif idx < yaxshi_limit:
+            user["category"] = "Yaxshi"
+        elif idx < ortacha_limit:
+            user["category"] = "O'rtacha"
+        else:
+            user["category"] = "Qoniqarli"
+    
+    return sorted_users
+
+
 def build_pdf_report(stats: dict, period_label: str, file_path: str):
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
@@ -158,6 +188,9 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
     total_messages = stats["total_messages"]
     users = stats["users"]
 
+    # Yangi kategoriya tizimi bo'yicha qayta klassifikatsiya qilish
+    users = classify_activity_by_percentile(users, total_messages)
+
     story.append(Paragraph(f"Boshlanish vaqti: <b>{start_text}</b>", style_info))
     story.append(Paragraph(f"Tugash vaqti: <b>{end_text}</b>", style_info))
     story.append(Paragraph(f"Jami xabarlar soni: <b>{total_messages}</b>", style_info))
@@ -208,7 +241,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
     story.append(summary_table)
     story.append(Spacer(1, 10))
 
-    # ===== TOP 3 =====
+    # ===== TOP 3 (ranglar bilan) =====
     if users:
         top3 = users[:3]
         top3_rows = [[
@@ -230,17 +263,31 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
             ])
 
         top3_table = Table(top3_rows, colWidths=[18 * mm, 90 * mm, 28 * mm, 28 * mm, 32 * mm])
-        top3_table.setStyle(TableStyle([
+        
+        # TOP 3 jadvaliga ranglar qo'shish (Batafsil jadvaldagi kabi)
+        top3_style = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#123b5d")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#fff3cd")),
-            ("BACKGROUND", (0, 2), (-1, 2), colors.HexColor("#e8f0fe")),
-            ("BACKGROUND", (0, 3), (-1, 3), colors.HexColor("#fbe9e7")),
             ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ]))
+        ]
+        
+        # Har bir qatorga kategoriyasiga qarab rang berish
+        for row_idx, u in enumerate(top3, start=1):
+            cat = u["category"]
+            if cat == "Faol":
+                bg = colors.HexColor("#d9f2e3")
+            elif cat == "Yaxshi":
+                bg = colors.HexColor("#dbeafe")
+            elif cat == "O'rtacha":
+                bg = colors.HexColor("#fff4cc")
+            else:
+                bg = colors.HexColor("#f3e5dc")
+            top3_style.append(("BACKGROUND", (0, row_idx), (-1, row_idx), bg))
+        
+        top3_table.setStyle(TableStyle(top3_style))
         story.append(Paragraph("<b>Eng faol 3 ishtirokchi</b>", styles["Heading3"]))
         story.append(top3_table)
         story.append(Spacer(1, 10))
@@ -284,6 +331,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]
 
+    # Toifa ustuniga rang berish (5-ustun, indeks 4)
     for row_idx, user in enumerate(users, start=1):
         cat = user["category"]
         if cat == "Faol":
