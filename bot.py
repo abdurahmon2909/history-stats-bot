@@ -101,34 +101,37 @@ def quick_report_kb() -> InlineKeyboardMarkup:
 
 
 def time_select_kb() -> InlineKeyboardMarkup:
-    """Soat va daqiqa tanlash uchun tugmalar"""
+    """Soat tanlash uchun tugmalar (00-23)"""
     keyboard = []
     
-    # Soatlar 00-23
-    hour_row = []
-    for hour in range(0, 24, 3):
-        hour_row.append(InlineKeyboardButton(text=f"{hour:02d}", callback_data=f"time:hour:{hour}"))
-    keyboard.append(hour_row)
+    # Soatlar 0-23 qatorlarga bo'lib (4 tadan)
+    for i in range(0, 24, 4):
+        row = []
+        for hour in range(i, i+4):
+            if hour < 24:
+                row.append(InlineKeyboardButton(text=f"{hour:02d}", callback_data=f"time:hour:{hour}"))
+        keyboard.append(row)
     
-    # Soat tanlash uchun qo'shimcha
-    keyboard.append([InlineKeyboardButton(text="⏰ Soatni o'zingiz kiriting", callback_data="time:manual_hour")])
+    # Qo'lda kiritish tugmasi
+    keyboard.append([InlineKeyboardButton(text="✏️ Soatni o'zingiz kiriting", callback_data="time:manual_hour")])
+    keyboard.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="admin:cancel_report")])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def minute_select_kb(selected_hour: int) -> InlineKeyboardMarkup:
-    """Daqiqa tanlash uchun tugmalar"""
+    """Daqiqa tanlash uchun tugmalar (0, 15, 30, 45 va qo'lda)"""
     keyboard = []
     
-    # Daqiqalar 0, 15, 30, 45
+    # Daqiqalar qatori
     minute_row = []
     for minute in [0, 15, 30, 45]:
         minute_row.append(InlineKeyboardButton(text=f"{minute:02d}", callback_data=f"time:minute:{selected_hour}:{minute}"))
     keyboard.append(minute_row)
     
     # Qo'lda kiritish
-    keyboard.append([InlineKeyboardButton(text="⏰ Daqiqani o'zingiz kiriting", callback_data="time:manual_minute")])
-    keyboard.append([InlineKeyboardButton(text="🔙 Ortga", callback_data="time:back_to_date")])
+    keyboard.append([InlineKeyboardButton(text="✏️ Daqiqani o'zingiz kiriting", callback_data="time:manual_minute")])
+    keyboard.append([InlineKeyboardButton(text="🔙 Ortga", callback_data="time:back_to_hour")])
     keyboard.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="admin:cancel_report")])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
@@ -434,7 +437,7 @@ async def custom_report_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# Time handler for manual hour input
+# Time handlers
 @router.callback_query(F.data == "time:manual_hour")
 async def manual_hour_input(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -447,7 +450,6 @@ async def manual_hour_input(callback: CallbackQuery, state: FSMContext):
         "❌ Bekor qilish tugmasini bosing.",
         reply_markup=cancel_report_kb(),
     )
-    await state.set_state(AdminReportState.waiting_for_start_time)
     await callback.answer()
 
 
@@ -463,12 +465,11 @@ async def manual_minute_input(callback: CallbackQuery, state: FSMContext):
         "❌ Bekor qilish tugmasini bosing.",
         reply_markup=cancel_report_kb(),
     )
-    await state.set_state(AdminReportState.waiting_for_start_time)
     await callback.answer()
 
 
-@router.callback_query(F.data == "time:back_to_date")
-async def back_to_date(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data == "time:back_to_hour")
+async def back_to_hour(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         await callback.answer("Siz admin emassiz", show_alert=True)
         return
@@ -476,20 +477,22 @@ async def back_to_date(callback: CallbackQuery, state: FSMContext):
     current_state = await state.get_state()
     
     if current_state == AdminReportState.waiting_for_start_time:
-        await state.set_state(AdminReportState.waiting_for_start_date)
-        now = datetime.now()
+        data = await state.get_data()
+        selected_date = data.get("start_date")
         await callback.message.edit_text(
-            "📅 BOSHLANG'ICH SANANI qayta tanlang:",
-            reply_markup=create_calendar_kb(now.year, now.month)
+            f"✅ Boshlang'ich sana: {selected_date.strftime('%Y-%m-%d')}\n\n"
+            "⏰ BOSHLANG'ICH SOATNI tanlang:",
+            reply_markup=time_select_kb()
         )
     elif current_state == AdminReportState.waiting_for_end_time:
         data = await state.get_data()
         start_date = data.get("start_date")
-        await state.set_state(AdminReportState.waiting_for_end_date)
+        end_date = data.get("end_date")
         await callback.message.edit_text(
-            f"✅ Boshlang'ich sana: {start_date.strftime('%Y-%m-%d')}\n\n"
-            "📅 TUGASH SANASINI qayta tanlang:",
-            reply_markup=create_calendar_kb(start_date.year, start_date.month)
+            f"✅ Boshlang'ich sana: {start_date.strftime('%Y-%m-%d')}\n"
+            f"✅ Tugash sanasi: {end_date.strftime('%Y-%m-%d')}\n\n"
+            "⏰ TUGASH SOATINI tanlang:",
+            reply_markup=time_select_kb()
         )
     
     await callback.answer()
@@ -658,14 +661,13 @@ async def calendar_handler(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
 
 
-# Manual time input handlers
+# Manual time input handlers (text)
 @router.message(AdminReportState.waiting_for_start_time)
 async def manual_time_input(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
     
     try:
-        # Soat va daqiqani qabul qilish (HH yoki HH:MM)
         text = message.text.strip()
         
         if ":" in text:
