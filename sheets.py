@@ -452,3 +452,83 @@ def _get_stats_for_hours_sync(chat_id: int, hours: int) -> dict[str, Any]:
         "total_messages": total_messages,
         "users": result,
     }
+
+
+async def get_stats_for_range(chat_id: int, start_dt: datetime, end_dt: datetime) -> dict[str, Any]:
+    """Berilgan vaqt oralig'idagi statistikani qaytaradi"""
+    await flush_message_buffer()
+    return await asyncio.to_thread(_get_stats_for_range_sync, chat_id, start_dt, end_dt)
+
+
+def _get_stats_for_range_sync(chat_id: int, start_dt: datetime, end_dt: datetime) -> dict[str, Any]:
+    ws = _get_ws_sync(WS_MESSAGES)
+    rows = _retry_sync(ws.get_all_records)
+
+    filtered = []
+    for row in rows:
+        try:
+            if int(str(row.get("chat_id", "0")).strip()) != int(chat_id):
+                continue
+
+            user_id = int(str(row.get("user_id", "0")).strip())
+            if user_id in EXCLUDED_USER_IDS:
+                continue
+
+            sent_at_raw = str(row.get("sent_at", "")).strip()
+            if not sent_at_raw:
+                continue
+
+            sent_at = datetime.fromisoformat(sent_at_raw)
+            if sent_at.tzinfo is None:
+                sent_at = sent_at.replace(tzinfo=TASHKENT_TZ)
+
+            # Vaqt oralig'ini tekshirish
+            start_dt_tz = start_dt.astimezone(TASHKENT_TZ) if start_dt.tzinfo else start_dt.replace(tzinfo=TASHKENT_TZ)
+            end_dt_tz = end_dt.astimezone(TASHKENT_TZ) if end_dt.tzinfo else end_dt.replace(tzinfo=TASHKENT_TZ)
+
+            if sent_at < start_dt_tz or sent_at > end_dt_tz:
+                continue
+
+            filtered.append(row)
+        except Exception:
+            continue
+
+    total_messages = len(filtered)
+    per_user: dict[int, dict[str, Any]] = {}
+
+    for row in filtered:
+        try:
+            user_id = int(str(row.get("user_id", "0")).strip())
+            if user_id in EXCLUDED_USER_IDS:
+                continue
+        except Exception:
+            continue
+
+        full_name = str(row.get("full_name", "")).strip() or "Noma'lum"
+        username = str(row.get("username", "")).strip()
+
+        if user_id not in per_user:
+            per_user[user_id] = {
+                "user_id": user_id,
+                "full_name": full_name,
+                "username": username,
+                "msg_count": 0,
+            }
+
+        per_user[user_id]["msg_count"] += 1
+
+    result = []
+    for item in per_user.values():
+        share = (item["msg_count"] / total_messages * 100) if total_messages else 0.0
+        item["share_percent"] = round(share, 2)
+        item["category"] = classify_activity(share)
+        result.append(item)
+
+    result.sort(key=lambda x: (-x["msg_count"], x["full_name"].lower()))
+
+    return {
+        "start_dt": start_dt,
+        "end_dt": end_dt,
+        "total_messages": total_messages,
+        "users": result,
+    }
