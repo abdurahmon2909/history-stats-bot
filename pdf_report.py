@@ -231,7 +231,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         [
             Paragraph(f"{category_counts['Faol']} ({faol_percent:.1f}%)", style_box_value),
             Paragraph(f"{category_counts['Yaxshi']} ({yaxshi_percent:.1f}%)", style_box_value),
-            Paragraph(f"{category_counts['O'rtacha']} ({ortacha_percent:.1f}%)", style_box_value),
+            Paragraph(f"{category_counts['O\'rtacha']} ({ortacha_percent:.1f}%)", style_box_value),
             Paragraph(f"{category_counts['Qoniqarli']} ({qoniqarli_percent:.1f}%)", style_box_value),
         ]
     ]
