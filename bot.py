@@ -70,6 +70,7 @@ def is_admin(user_id: int) -> bool:
 
 
 def admin_main_menu_kb() -> InlineKeyboardMarkup:
+    """Asosiy admin menyusi"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📊 Tez hisobot", callback_data="admin:quick")],
@@ -80,6 +81,7 @@ def admin_main_menu_kb() -> InlineKeyboardMarkup:
 
 
 def quick_report_kb() -> InlineKeyboardMarkup:
+    """Tez hisobot menyusi"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -94,6 +96,8 @@ def quick_report_kb() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="1 oy", callback_data="quick:720"),
+            ],
+            [
                 InlineKeyboardButton(text="🔙 Ortga", callback_data="admin:back_to_main"),
             ],
         ]
@@ -101,7 +105,7 @@ def quick_report_kb() -> InlineKeyboardMarkup:
 
 
 def time_select_kb() -> InlineKeyboardMarkup:
-    """Soat tanlash uchun tugmalar (00-23)"""
+    """Soat tanlash menyusi (00-23)"""
     keyboard = []
     
     # Soatlar 0-23 qatorlarga bo'lib (4 tadan)
@@ -112,15 +116,16 @@ def time_select_kb() -> InlineKeyboardMarkup:
                 row.append(InlineKeyboardButton(text=f"{hour:02d}", callback_data=f"time:hour:{hour}"))
         keyboard.append(row)
     
-    # Qo'lda kiritish tugmasi
+    # Qo'lda kiritish va navigatsiya tugmalari
     keyboard.append([InlineKeyboardButton(text="✏️ Soatni o'zingiz kiriting", callback_data="time:manual_hour")])
+    keyboard.append([InlineKeyboardButton(text="🔙 Ortga", callback_data="time:back_to_date")])
     keyboard.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="admin:cancel_report")])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def minute_select_kb(selected_hour: int) -> InlineKeyboardMarkup:
-    """Daqiqa tanlash uchun tugmalar (0, 15, 30, 45 va qo'lda)"""
+    """Daqiqa tanlash menyusi"""
     keyboard = []
     
     # Daqiqalar qatori
@@ -129,18 +134,21 @@ def minute_select_kb(selected_hour: int) -> InlineKeyboardMarkup:
         minute_row.append(InlineKeyboardButton(text=f"{minute:02d}", callback_data=f"time:minute:{selected_hour}:{minute}"))
     keyboard.append(minute_row)
     
-    # Qo'lda kiritish
+    # Qo'lda kiritish va navigatsiya tugmalari
     keyboard.append([InlineKeyboardButton(text="✏️ Daqiqani o'zingiz kiriting", callback_data="time:manual_minute")])
-    keyboard.append([InlineKeyboardButton(text="🔙 Ortga", callback_data="time:back_to_hour")])
+    keyboard.append([InlineKeyboardButton(text="🔙 Ortga (soatga)", callback_data="time:back_to_hour")])
+    keyboard.append([InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="admin:back_to_main")])
     keyboard.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="admin:cancel_report")])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def cancel_report_kb() -> InlineKeyboardMarkup:
+    """Bekor qilish menyusi"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="admin:cancel_report")]
+            [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="admin:cancel_report")],
+            [InlineKeyboardButton(text="🔙 Ortga", callback_data="admin:back_to_main")],
         ]
     )
 
@@ -155,7 +163,7 @@ def join_channel_kb() -> InlineKeyboardMarkup:
 
 
 def create_calendar_kb(year: int, month: int, selected_day: int = None) -> InlineKeyboardMarkup:
-    """Oddiy kalendar yaratish"""
+    """Kalendar menyusi"""
     
     months_uz = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", 
                  "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"]
@@ -202,6 +210,7 @@ def create_calendar_kb(year: int, month: int, selected_day: int = None) -> Inlin
         keyboard.append(row)
     
     keyboard.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="admin:cancel_report")])
+    keyboard.append([InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="admin:back_to_main")])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
@@ -468,6 +477,34 @@ async def manual_minute_input(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+@router.callback_query(F.data == "time:back_to_date")
+async def back_to_date(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Siz admin emassiz", show_alert=True)
+        return
+    
+    current_state = await state.get_state()
+    
+    if current_state == AdminReportState.waiting_for_start_time:
+        await state.set_state(AdminReportState.waiting_for_start_date)
+        now = datetime.now()
+        await callback.message.edit_text(
+            "📅 BOSHLANG'ICH SANANI qayta tanlang:",
+            reply_markup=create_calendar_kb(now.year, now.month)
+        )
+    elif current_state == AdminReportState.waiting_for_end_time:
+        data = await state.get_data()
+        start_date = data.get("start_date")
+        await state.set_state(AdminReportState.waiting_for_end_date)
+        await callback.message.edit_text(
+            f"✅ Boshlang'ich sana: {start_date.strftime('%Y-%m-%d')}\n\n"
+            "📅 TUGASH SANASINI qayta tanlang:",
+            reply_markup=create_calendar_kb(start_date.year, start_date.month)
+        )
+    
+    await callback.answer()
+
+
 @router.callback_query(F.data == "time:back_to_hour")
 async def back_to_hour(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -583,6 +620,7 @@ async def select_minute(callback: CallbackQuery, state: FSMContext):
             caption=f"📊 {period_label} uchun PDF hisobot",
         )
         
+        # HISOBOTDAN KEYIN ASOSIY MENYU
         await callback.message.answer(
             "👋 Admin panelga xush kelibsiz!",
             reply_markup=admin_main_menu_kb(),
@@ -764,6 +802,7 @@ async def manual_end_time_input(message: Message, state: FSMContext):
             caption=f"📊 {period_label} uchun PDF hisobot",
         )
         
+        # HISOBOTDAN KEYIN ASOSIY MENYU
         await message.answer(
             "👋 Admin panelga xush kelibsiz!",
             reply_markup=admin_main_menu_kb(),
@@ -822,6 +861,12 @@ async def quick_report_handler(callback: CallbackQuery):
         FSInputFile(filename),
         caption=f"So'nggi {period_label} bo'yicha PDF hisobot",
     )
+    
+    # HISOBOTDAN KEYIN ASOSIY MENYU
+    await callback.message.answer(
+        "👋 Admin panelga xush kelibsiz!",
+        reply_markup=admin_main_menu_kb(),
+    )
 
 
 @router.message(Command("id"))
@@ -842,7 +887,6 @@ async def group_message_tracker(message: Message):
 
     text = message.text or message.caption or ""
 
-    # Foydalanuvchining to'liq ismini Sheets'dan olamiz
     full_name = await get_user_fullname(message.from_user.id)
     if not full_name:
         full_name = message.from_user.full_name
