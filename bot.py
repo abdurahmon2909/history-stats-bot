@@ -9,6 +9,9 @@ from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ChatMemberStatus, ChatType
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandStart, Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
     Message,
     CallbackQuery,
@@ -27,6 +30,7 @@ from config import (
 from sheets import (
     init_sheets,
     upsert_user,
+    update_user_fullname,
     append_group_message,
     get_stats_for_hours,
     start_background_flush,
@@ -40,9 +44,14 @@ logging.basicConfig(
 )
 
 bot = Bot(BOT_TOKEN)
-dp = Dispatcher()
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
 router = Router()
 dp.include_router(router)
+
+
+class RegisterState(StatesGroup):
+    waiting_for_fullname = State()
 
 
 def is_admin(user_id: int) -> bool:
@@ -105,7 +114,7 @@ async def check_subscription(user_id: int) -> tuple[bool, str]:
 
 
 @router.message(CommandStart())
-async def start_handler(message: Message):
+async def start_handler(message: Message, state: FSMContext):
     user = message.from_user
     if not user:
         return
@@ -139,22 +148,47 @@ async def start_handler(message: Message):
         )
         return
 
-    if is_admin(user.id):
-        await message.answer(
-            "Admin panel ochildi. Quyidan statistika periodini tanlang:",
-            reply_markup=admin_menu_kb(),
-        )
-        return
-
+    await state.set_state(RegisterState.waiting_for_fullname)
     await message.answer(
-        "Obuna tasdiqlandi ✅\n\n"
-        "Xush kelibsiz.\n"
-        "Siz yuborgan xabarlar adminlarga yetkaziladi."
+        "✅ Obuna tasdiqlandi!\n\n"
+        "Iltimos, to'liq ismingiz va familiyangizni kiriting:\n"
+        "Masalan: Alisher Navoiy\n\n"
+        "Bu ma'lumot hisobotlarda ko'rsatiladi."
     )
 
 
+@router.message(RegisterState.waiting_for_fullname)
+async def register_fullname(message: Message, state: FSMContext):
+    user = message.from_user
+    if not user:
+        return
+
+    full_name = message.text.strip()
+    
+    if len(full_name) < 3:
+        await message.answer("Ism va familiya kamida 3 harfdan iborat bo'lishi kerak. Qaytadan kiriting:")
+        return
+
+    await update_user_fullname(user.id, full_name)
+    
+    await state.clear()
+    
+    if is_admin(user.id):
+        await message.answer(
+            f"✅ Assalomu alaykum, {full_name}!\n\n"
+            "Admin panel ochildi. Quyidan statistika periodini tanlang:",
+            reply_markup=admin_menu_kb(),
+        )
+    else:
+        await message.answer(
+            f"✅ Assalomu alaykum, {full_name}!\n\n"
+            "Xush kelibsiz.\n"
+            "Siz yuborgan xabarlar adminlarga yetkaziladi."
+        )
+
+
 @router.callback_query(F.data == "check_sub")
-async def check_subscription_callback(callback: CallbackQuery):
+async def check_subscription_callback(callback: CallbackQuery, state: FSMContext):
     user = callback.from_user
     if not user:
         await callback.answer("Foydalanuvchi topilmadi", show_alert=True)
@@ -189,17 +223,13 @@ async def check_subscription_callback(callback: CallbackQuery):
 
     await callback.answer("Obuna tasdiqlandi ✅")
 
-    if is_admin(user.id):
-        await callback.message.edit_text(
-            "Admin panel ochildi. Quyidan statistika periodini tanlang:",
-            reply_markup=admin_menu_kb(),
-        )
-    else:
-        await callback.message.edit_text(
-            "Obuna tasdiqlandi ✅\n\n"
-            "Xush kelibsiz.\n"
-            "Siz yuborgan xabarlar adminlarga yetkaziladi."
-        )
+    await state.set_state(RegisterState.waiting_for_fullname)
+    await callback.message.edit_text(
+        "✅ Obuna tasdiqlandi!\n\n"
+        "Iltimos, to'liq ismingiz va familiyangizni kiriting:\n"
+        "Masalan: Alisher Navoiy\n\n"
+        "Bu ma'lumot hisobotlarda ko'rsatiladi."
+    )
 
 
 @router.message(Command("admin"))
@@ -289,9 +319,13 @@ async def group_message_tracker(message: Message):
 
 
 @router.message(F.chat.type == ChatType.PRIVATE)
-async def private_message_router(message: Message):
+async def private_message_router(message: Message, state: FSMContext):
     user = message.from_user
     if not user:
+        return
+
+    current_state = await state.get_state()
+    if current_state is not None:
         return
 
     if message.text and message.text.startswith("/"):
@@ -326,33 +360,13 @@ async def private_message_router(message: Message):
         )
         return
 
-    if user.username:
-        sender_info = (
-            f"Yangi murojaat\n\n"
-            f"Ism: {user.full_name}\n"
-            f"Username: @{user.username}\n"
-            f"User ID: {user.id}"
-        )
-    else:
-        sender_info = (
-            f"Yangi murojaat\n\n"
-            f"Ism: {user.full_name}\n"
-            f"Username: yo'q\n"
-            f"User ID: {user.id}"
-        )
-
     for admin_id in ADMIN_IDS:
         try:
-            await bot.send_message(admin_id, sender_info)
-            await bot.copy_message(
-                chat_id=admin_id,
-                from_chat_id=message.chat.id,
-                message_id=message.message_id,
-            )
+            await message.forward(chat_id=admin_id)
         except Exception as e:
-            logging.exception("Adminga yuborishda xato: %s", e)
+            logging.exception("Adminga forward qilishda xato: %s", e)
 
-    await message.answer("Xabaringiz adminlarga yuborildi.")
+    await message.answer("✅ Xabaringiz adminga yuborildi.")
 
 
 async def main():
