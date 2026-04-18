@@ -26,22 +26,26 @@ def _safe(val) -> str:
     return str(val or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def classify_activity_by_percentile(users: list, total_messages: int) -> list:
+def classify_activity_by_percentile(users: list) -> list:
     """
     Foydalanuvchilarni xabarlar soni bo'yicha saralab,
-    yuqori 10% Faol, keyingi 20% Yaxshi, keyingi 30% O'rtacha, qolgan 40% Qoniqarli
+    umumiy foydalanuvchilar sonining:
+    - Yuqori 10% -> Faol
+    - Keyingi 20% -> Yaxshi
+    - Keyingi 30% -> O'rtacha
+    - Qolgan 40% -> Qoniqarli
     """
-    if not users or total_messages == 0:
+    if not users:
         return users
     
     # Xabarlar soni bo'yicha saralash (kamayish tartibida)
     sorted_users = sorted(users, key=lambda x: x["msg_count"], reverse=True)
     total_users = len(sorted_users)
     
-    # Foizlar bo'yicha chegaralarni hisoblash
-    faol_limit = int(total_users * 0.1)  # Yuqori 10%
-    yaxshi_limit = faol_limit + int(total_users * 0.2)  # Keyingi 20%
-    ortacha_limit = yaxshi_limit + int(total_users * 0.3)  # Keyingi 30%
+    # Foydalanuvchilar sonining foizlariga qarab chegaralarni hisoblash
+    faol_limit = max(1, int(total_users * 0.1))  # Yuqori 10% (kamida 1 ta)
+    yaxshi_limit = faol_limit + max(1, int(total_users * 0.2))  # Keyingi 20%
+    ortacha_limit = yaxshi_limit + max(1, int(total_users * 0.3))  # Keyingi 30%
     
     for idx, user in enumerate(sorted_users):
         if idx < faol_limit:
@@ -188,8 +192,8 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
     total_messages = stats["total_messages"]
     users = stats["users"]
 
-    # Yangi kategoriya tizimi bo'yicha qayta klassifikatsiya qilish
-    users = classify_activity_by_percentile(users, total_messages)
+    # Foydalanuvchilar sonining foizlariga qarab kategoriyalarni belgilash
+    users = classify_activity_by_percentile(users)
 
     story.append(Paragraph(f"Boshlanish vaqti: <b>{start_text}</b>", style_info))
     story.append(Paragraph(f"Tugash vaqti: <b>{end_text}</b>", style_info))
@@ -210,6 +214,13 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         if cat in category_counts:
             category_counts[cat] += 1
 
+    # Kategoriya foizlarini hisoblash
+    total_users = len(users)
+    faol_percent = (category_counts["Faol"] / total_users * 100) if total_users else 0
+    yaxshi_percent = (category_counts["Yaxshi"] / total_users * 100) if total_users else 0
+    ortacha_percent = (category_counts["O'rtacha"] / total_users * 100) if total_users else 0
+    qoniqarli_percent = (category_counts["Qoniqarli"] / total_users * 100) if total_users else 0
+
     summary_data = [
         [
             Paragraph("Faol", style_box_title),
@@ -218,10 +229,10 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
             Paragraph("Qoniqarli", style_box_title),
         ],
         [
-            Paragraph(str(category_counts["Faol"]), style_box_value),
-            Paragraph(str(category_counts["Yaxshi"]), style_box_value),
-            Paragraph(str(category_counts["O'rtacha"]), style_box_value),
-            Paragraph(str(category_counts["Qoniqarli"]), style_box_value),
+            Paragraph(f"{category_counts['Faol']} ({faol_percent:.1f}%)", style_box_value),
+            Paragraph(f"{category_counts['Yaxshi']} ({yaxshi_percent:.1f}%)", style_box_value),
+            Paragraph(f"{category_counts['O'rtacha']} ({ortacha_percent:.1f}%)", style_box_value),
+            Paragraph(f"{category_counts['Qoniqarli']} ({qoniqarli_percent:.1f}%)", style_box_value),
         ]
     ]
 
