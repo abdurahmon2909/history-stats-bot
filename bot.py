@@ -36,6 +36,7 @@ from sheets import (
     append_group_message,
     get_stats_for_range,
     get_stats_for_hours,
+    get_user_fullname,
     start_background_flush,
     stop_background_flush,
 )
@@ -59,7 +60,9 @@ class RegisterState(StatesGroup):
 
 class AdminReportState(StatesGroup):
     waiting_for_start_date = State()
+    waiting_for_start_time = State()
     waiting_for_end_date = State()
+    waiting_for_end_time = State()
 
 
 def is_admin(user_id: int) -> bool:
@@ -88,13 +91,47 @@ def quick_report_kb() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="1 kun", callback_data="quick:24"),
                 InlineKeyboardButton(text="3 kun", callback_data="quick:72"),
                 InlineKeyboardButton(text="1 hafta", callback_data="quick:168"),
-                InlineKeyboardButton(text="1 oy", callback_data="quick:672"),
             ],
             [
+                InlineKeyboardButton(text="1 oy", callback_data="quick:720"),
                 InlineKeyboardButton(text="🔙 Ortga", callback_data="admin:back_to_main"),
             ],
         ]
     )
+
+
+def time_select_kb() -> InlineKeyboardMarkup:
+    """Soat va daqiqa tanlash uchun tugmalar"""
+    keyboard = []
+    
+    # Soatlar 00-23
+    hour_row = []
+    for hour in range(0, 24, 3):
+        hour_row.append(InlineKeyboardButton(text=f"{hour:02d}", callback_data=f"time:hour:{hour}"))
+    keyboard.append(hour_row)
+    
+    # Soat tanlash uchun qo'shimcha
+    keyboard.append([InlineKeyboardButton(text="⏰ Soatni o'zingiz kiriting", callback_data="time:manual_hour")])
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def minute_select_kb(selected_hour: int) -> InlineKeyboardMarkup:
+    """Daqiqa tanlash uchun tugmalar"""
+    keyboard = []
+    
+    # Daqiqalar 0, 15, 30, 45
+    minute_row = []
+    for minute in [0, 15, 30, 45]:
+        minute_row.append(InlineKeyboardButton(text=f"{minute:02d}", callback_data=f"time:minute:{selected_hour}:{minute}"))
+    keyboard.append(minute_row)
+    
+    # Qo'lda kiritish
+    keyboard.append([InlineKeyboardButton(text="⏰ Daqiqani o'zingiz kiriting", callback_data="time:manual_minute")])
+    keyboard.append([InlineKeyboardButton(text="🔙 Ortga", callback_data="time:back_to_date")])
+    keyboard.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="admin:cancel_report")])
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def cancel_report_kb() -> InlineKeyboardMarkup:
@@ -115,22 +152,17 @@ def join_channel_kb() -> InlineKeyboardMarkup:
 
 
 def create_calendar_kb(year: int, month: int, selected_day: int = None) -> InlineKeyboardMarkup:
-    """Oddiy kalendar yaratish (hech qanday tashqi kutubxona kerak emas)"""
+    """Oddiy kalendar yaratish"""
     
-    # Oy nomlari (o'zbekcha)
     months_uz = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", 
                  "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"]
     
-    # Hafta kunlari (o'zbekcha)
     week_days = ["Du", "Se", "Ch", "Pa", "Ju", "Sh", "Ya"]
     
-    # Oyning birinchi kuni (0=Du, 1=Se, ...)
     first_weekday, days_in_month = cal_module.monthrange(year, month)
     
-    # Kalendar tugmalari
     keyboard = []
     
-    # Oy va yil sarlavhasi + oldingi/keyingi oy tugmalari
     prev_month = month - 1 if month > 1 else 12
     prev_year = year if month > 1 else year - 1
     next_month = month + 1 if month < 12 else 1
@@ -142,15 +174,12 @@ def create_calendar_kb(year: int, month: int, selected_day: int = None) -> Inlin
         InlineKeyboardButton(text="▶️", callback_data=f"cal:next:{next_year}:{next_month}")
     ])
     
-    # Hafta kunlari
     week_row = []
     for day in week_days:
         week_row.append(InlineKeyboardButton(text=day, callback_data="cal:ignore"))
     keyboard.append(week_row)
     
-    # Kalendar kunlari
     row = []
-    # Bo'sh joylar (oldingi oyning kunlari)
     for _ in range(first_weekday):
         row.append(InlineKeyboardButton(text=" ", callback_data="cal:ignore"))
     
@@ -164,13 +193,11 @@ def create_calendar_kb(year: int, month: int, selected_day: int = None) -> Inlin
             keyboard.append(row)
             row = []
     
-    # Qolgan bo'sh joylar
     if row:
         while len(row) < 7:
             row.append(InlineKeyboardButton(text=" ", callback_data="cal:ignore"))
         keyboard.append(row)
     
-    # Bekor qilish tugmasi
     keyboard.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="admin:cancel_report")])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
@@ -407,6 +434,160 @@ async def custom_report_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+# Time handler for manual hour input
+@router.callback_query(F.data == "time:manual_hour")
+async def manual_hour_input(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Siz admin emassiz", show_alert=True)
+        return
+    
+    await callback.message.edit_text(
+        "⏰ Soatni kiriting (0-23):\n"
+        "Masalan: 14\n\n"
+        "❌ Bekor qilish tugmasini bosing.",
+        reply_markup=cancel_report_kb(),
+    )
+    await state.set_state(AdminReportState.waiting_for_start_time)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "time:manual_minute")
+async def manual_minute_input(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Siz admin emassiz", show_alert=True)
+        return
+    
+    await callback.message.edit_text(
+        "⏰ Daqiqani kiriting (0-59):\n"
+        "Masalan: 30\n\n"
+        "❌ Bekor qilish tugmasini bosing.",
+        reply_markup=cancel_report_kb(),
+    )
+    await state.set_state(AdminReportState.waiting_for_start_time)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "time:back_to_date")
+async def back_to_date(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Siz admin emassiz", show_alert=True)
+        return
+    
+    current_state = await state.get_state()
+    
+    if current_state == AdminReportState.waiting_for_start_time:
+        await state.set_state(AdminReportState.waiting_for_start_date)
+        now = datetime.now()
+        await callback.message.edit_text(
+            "📅 BOSHLANG'ICH SANANI qayta tanlang:",
+            reply_markup=create_calendar_kb(now.year, now.month)
+        )
+    elif current_state == AdminReportState.waiting_for_end_time:
+        data = await state.get_data()
+        start_date = data.get("start_date")
+        await state.set_state(AdminReportState.waiting_for_end_date)
+        await callback.message.edit_text(
+            f"✅ Boshlang'ich sana: {start_date.strftime('%Y-%m-%d')}\n\n"
+            "📅 TUGASH SANASINI qayta tanlang:",
+            reply_markup=create_calendar_kb(start_date.year, start_date.month)
+        )
+    
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("time:hour:"))
+async def select_hour(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Siz admin emassiz", show_alert=True)
+        return
+    
+    hour = int(callback.data.split(":")[2])
+    await state.update_data(selected_hour=hour)
+    
+    await callback.message.edit_text(
+        f"✅ Tanlangan soat: {hour:02d}\n\n"
+        "⏰ DAQIQA NI tanlang:",
+        reply_markup=minute_select_kb(hour)
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("time:minute:"))
+async def select_minute(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Siz admin emassiz", show_alert=True)
+        return
+    
+    parts = callback.data.split(":")
+    hour = int(parts[2])
+    minute = int(parts[3])
+    
+    selected_time = datetime.now().replace(hour=hour, minute=minute, second=0, microsecond=0)
+    await state.update_data(selected_time=selected_time)
+    
+    current_state = await state.get_state()
+    
+    if current_state == AdminReportState.waiting_for_start_time:
+        data = await state.get_data()
+        start_date = data.get("start_date")
+        start_datetime = datetime.combine(start_date, selected_time.time())
+        
+        await state.update_data(start_datetime=start_datetime)
+        await state.set_state(AdminReportState.waiting_for_end_date)
+        
+        await callback.message.edit_text(
+            f"✅ Boshlang'ich vaqt: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n\n"
+            "📅 TUGASH SANASINI tanlang:",
+            reply_markup=create_calendar_kb(start_date.year, start_date.month)
+        )
+        
+    elif current_state == AdminReportState.waiting_for_end_time:
+        data = await state.get_data()
+        end_date = data.get("end_date")
+        start_datetime = data.get("start_datetime")
+        end_datetime = datetime.combine(end_date, selected_time.time())
+        
+        if end_datetime < start_datetime:
+            await callback.answer("❌ Tugash vaqti boshlang'ich vaqtdan oldin bo'lishi mumkin emas!", show_alert=True)
+            return
+        
+        await state.clear()
+        
+        await callback.message.edit_text(
+            f"📊 Hisobot tayyorlanmoqda...\n\n"
+            f"📅 Boshlanish: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n"
+            f"📅 Tugash: {end_datetime.strftime('%Y-%m-%d %H:%M')}"
+        )
+        
+        stats = await get_stats_for_range(GROUP_CHAT_ID, start_datetime, end_datetime)
+        
+        period_label = f"{start_datetime.strftime('%Y-%m-%d %H:%M')} dan {end_datetime.strftime('%Y-%m-%d %H:%M')} gacha"
+        
+        os.makedirs("reports", exist_ok=True)
+        filename = f"reports/report_{start_datetime.strftime('%Y%m%d_%H%M')}_{end_datetime.strftime('%Y%m%d_%H%M')}_{datetime.now().strftime('%H%M%S')}.pdf"
+        
+        await asyncio.to_thread(build_pdf_report, stats, period_label, filename)
+        
+        short_text = (
+            f"{period_label} bo'yicha natija tayyor.\n"
+            f"Jami xabarlar: {stats['total_messages']}\n"
+            f"Faol foydalanuvchilar: {len(stats['users'])}"
+        )
+        
+        await callback.message.answer(short_text)
+        await callback.message.answer_document(
+            FSInputFile(filename),
+            caption=f"📊 {period_label} uchun PDF hisobot",
+        )
+        
+        await callback.message.answer(
+            "👋 Admin panelga xush kelibsiz!",
+            reply_markup=admin_main_menu_kb(),
+        )
+    
+    await callback.answer()
+
+
 # Calendar callback handler
 @router.callback_query(F.data.startswith("cal:"))
 async def calendar_handler(callback: CallbackQuery, state: FSMContext):
@@ -445,18 +626,18 @@ async def calendar_handler(callback: CallbackQuery, state: FSMContext):
         
         if current_state == AdminReportState.waiting_for_start_date:
             await state.update_data(start_date=selected_date)
-            await state.set_state(AdminReportState.waiting_for_end_date)
+            await state.set_state(AdminReportState.waiting_for_start_time)
             
             await callback.message.edit_text(
                 f"✅ Boshlang'ich sana: {selected_date.strftime('%Y-%m-%d')}\n\n"
-                "📅 TUGASH SANASINI tanlang:"
-            )
-            
-            await callback.message.edit_reply_markup(
-                reply_markup=create_calendar_kb(year, month)
+                "⏰ BOSHLANG'ICH SOATNI tanlang:",
+                reply_markup=time_select_kb()
             )
             
         elif current_state == AdminReportState.waiting_for_end_date:
+            await state.update_data(end_date=selected_date)
+            await state.set_state(AdminReportState.waiting_for_end_time)
+            
             data = await state.get_data()
             start_date = data.get("start_date")
             
@@ -464,47 +645,135 @@ async def calendar_handler(callback: CallbackQuery, state: FSMContext):
                 await callback.answer("❌ Tugash sanasi boshlang'ich sanadan oldin bo'lishi mumkin emas!", show_alert=True)
                 return
             
-            await state.clear()
-            
-            start_datetime = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-            end_datetime = datetime.combine(selected_date, datetime.max.time()).replace(tzinfo=timezone.utc)
-            
             await callback.message.edit_text(
-                f"📊 Hisobot tayyorlanmoqda...\n\n"
-                f"📅 Boshlanish: {start_date.strftime('%Y-%m-%d')}\n"
-                f"📅 Tugash: {selected_date.strftime('%Y-%m-%d')}"
-            )
-            
-            stats = await get_stats_for_range(GROUP_CHAT_ID, start_datetime, end_datetime)
-            
-            period_label = f"{start_date.strftime('%Y-%m-%d')} dan {selected_date.strftime('%Y-%m-%d')} gacha"
-            
-            os.makedirs("reports", exist_ok=True)
-            filename = f"reports/report_{start_date.strftime('%Y%m%d')}_{selected_date.strftime('%Y%m%d')}_{datetime.now().strftime('%H%M%S')}.pdf"
-            
-            await asyncio.to_thread(build_pdf_report, stats, period_label, filename)
-            
-            short_text = (
-                f"So'nggi {period_label} bo'yicha natija tayyor.\n"
-                f"Jami xabarlar: {stats['total_messages']}\n"
-                f"Faol foydalanuvchilar: {len(stats['users'])}"
-            )
-            
-            await callback.message.answer(short_text)
-            await callback.message.answer_document(
-                FSInputFile(filename),
-                caption=f"📊 {period_label} uchun PDF hisobot",
-            )
-            
-            await callback.message.answer(
-                "👋 Admin panelga xush kelibsiz!",
-                reply_markup=admin_main_menu_kb(),
+                f"✅ Boshlang'ich sana: {start_date.strftime('%Y-%m-%d')}\n"
+                f"✅ Tugash sanasi: {selected_date.strftime('%Y-%m-%d')}\n\n"
+                "⏰ TUGASH SOATINI tanlang:",
+                reply_markup=time_select_kb()
             )
             
         await callback.answer()
     
     elif action == "ignore":
         await callback.answer()
+
+
+# Manual time input handlers
+@router.message(AdminReportState.waiting_for_start_time)
+async def manual_time_input(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        # Soat va daqiqani qabul qilish (HH yoki HH:MM)
+        text = message.text.strip()
+        
+        if ":" in text:
+            hour, minute = map(int, text.split(":"))
+        else:
+            hour = int(text)
+            minute = 0
+        
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError
+        
+        selected_time = datetime.now().replace(hour=hour, minute=minute, second=0, microsecond=0)
+        
+        data = await state.get_data()
+        selected_date = data.get("start_date")
+        start_datetime = datetime.combine(selected_date, selected_time.time())
+        
+        await state.update_data(start_datetime=start_datetime)
+        await state.set_state(AdminReportState.waiting_for_end_date)
+        
+        await message.answer(
+            f"✅ Boshlang'ich vaqt: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n\n"
+            "📅 TUGASH SANASINI tanlang:",
+            reply_markup=create_calendar_kb(selected_date.year, selected_date.month)
+        )
+        
+    except ValueError:
+        await message.answer(
+            "❌ Noto'g'ri format! Iltimos, soatni 0-23 oralig'ida kiriting.\n"
+            "Masalan: 14 yoki 14:30\n\n"
+            "Qaytadan kiriting yoki bekor qiling:",
+            reply_markup=cancel_report_kb(),
+        )
+
+
+@router.message(AdminReportState.waiting_for_end_time)
+async def manual_end_time_input(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        text = message.text.strip()
+        
+        if ":" in text:
+            hour, minute = map(int, text.split(":"))
+        else:
+            hour = int(text)
+            minute = 0
+        
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError
+        
+        selected_time = datetime.now().replace(hour=hour, minute=minute, second=0, microsecond=0)
+        
+        data = await state.get_data()
+        end_date = data.get("end_date")
+        start_datetime = data.get("start_datetime")
+        end_datetime = datetime.combine(end_date, selected_time.time())
+        
+        if end_datetime < start_datetime:
+            await message.answer(
+                "❌ Tugash vaqti boshlang'ich vaqtdan oldin bo'lishi mumkin emas!\n"
+                "Qaytadan kiriting:",
+                reply_markup=cancel_report_kb(),
+            )
+            return
+        
+        await state.clear()
+        
+        await message.answer(
+            f"📊 Hisobot tayyorlanmoqda...\n\n"
+            f"📅 Boshlanish: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n"
+            f"📅 Tugash: {end_datetime.strftime('%Y-%m-%d %H:%M')}"
+        )
+        
+        stats = await get_stats_for_range(GROUP_CHAT_ID, start_datetime, end_datetime)
+        
+        period_label = f"{start_datetime.strftime('%Y-%m-%d %H:%M')} dan {end_datetime.strftime('%Y-%m-%d %H:%M')} gacha"
+        
+        os.makedirs("reports", exist_ok=True)
+        filename = f"reports/report_{start_datetime.strftime('%Y%m%d_%H%M')}_{end_datetime.strftime('%Y%m%d_%H%M')}_{datetime.now().strftime('%H%M%S')}.pdf"
+        
+        await asyncio.to_thread(build_pdf_report, stats, period_label, filename)
+        
+        short_text = (
+            f"{period_label} bo'yicha natija tayyor.\n"
+            f"Jami xabarlar: {stats['total_messages']}\n"
+            f"Faol foydalanuvchilar: {len(stats['users'])}"
+        )
+        
+        await message.answer(short_text)
+        await message.answer_document(
+            FSInputFile(filename),
+            caption=f"📊 {period_label} uchun PDF hisobot",
+        )
+        
+        await message.answer(
+            "👋 Admin panelga xush kelibsiz!",
+            reply_markup=admin_main_menu_kb(),
+        )
+        
+    except ValueError:
+        await message.answer(
+            "❌ Noto'g'ri format! Iltimos, soatni 0-23 oralig'ida kiriting.\n"
+            "Masalan: 14 yoki 14:30\n\n"
+            "Qaytadan kiriting yoki bekor qiling:",
+            reply_markup=cancel_report_kb(),
+        )
 
 
 # Tez hisobotlar uchun handler
@@ -531,7 +800,7 @@ async def quick_report_handler(callback: CallbackQuery):
         24: "1 kun",
         72: "3 kun",
         168: "1 hafta",
-        672: "1 oy",
+        720: "1 oy",
     }
     period_label = labels.get(hours, f"{hours} soat")
     
@@ -571,11 +840,16 @@ async def group_message_tracker(message: Message):
 
     text = message.text or message.caption or ""
 
+    # Foydalanuvchining to'liq ismini Sheets'dan olamiz
+    full_name = await get_user_fullname(message.from_user.id)
+    if not full_name:
+        full_name = message.from_user.full_name
+
     await append_group_message(
         chat_id=message.chat.id,
         message_id=message.message_id,
         user_id=message.from_user.id,
-        full_name=message.from_user.full_name,
+        full_name=full_name,
         username=message.from_user.username,
         text=text,
         sent_at=message.date.astimezone(timezone.utc),
