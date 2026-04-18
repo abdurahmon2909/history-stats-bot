@@ -75,7 +75,7 @@ def admin_main_menu_kb() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="📊 Tez hisobot", callback_data="admin:quick")],
             [InlineKeyboardButton(text="📅 Qo'lda vaqt tanlash", callback_data="admin:custom")],
-            [InlineKeyboardButton(text="📈 Statistika", callback_data="admin:stats")],
+            #[InlineKeyboardButton(text="📈 Statistika", callback_data="admin:stats")],
         ]
     )
 
