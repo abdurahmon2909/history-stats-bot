@@ -187,6 +187,10 @@ def _upsert_user_sync(
         current_sub = cached.get("is_subscribed", "0")
         first_seen = cached.get("first_seen", now) or now
         new_sub = str(is_subscribed) if is_subscribed is not None else current_sub
+        
+        # Agar full_name bo'sh bo'lsa, eski nomni saqlaymiz
+        if not full_name or full_name.strip() == "":
+            full_name = cached.get("full_name", "")
 
         values = [[
             str(user_id),
@@ -284,6 +288,40 @@ def _update_user_fullname_sync(user_id: int, new_full_name: str):
 
 async def update_user_fullname(user_id: int, full_name: str):
     await asyncio.to_thread(_update_user_fullname_sync, user_id, full_name)
+
+
+async def get_user_fullname(user_id: int) -> str | None:
+    """Foydalanuvchining to'liq ismini qaytaradi"""
+    return await asyncio.to_thread(_get_user_fullname_sync, user_id)
+
+
+def _get_user_fullname_sync(user_id: int) -> str | None:
+    global USER_DATA_CACHE
+    
+    # Avval cache dan tekshiramiz
+    if user_id in USER_DATA_CACHE:
+        full_name = USER_DATA_CACHE[user_id].get("full_name", "")
+        if full_name and full_name.strip() != "":
+            return full_name
+    
+    # Cache da bo'lmasa, Google Sheets'dan o'qiymiz
+    try:
+        ws = _get_ws_sync(WS_USERS)
+        cell = ws.find(str(user_id), in_column=1)
+        if cell:
+            row = ws.row_values(cell.row)
+            if len(row) > 1 and row[1]:
+                full_name = row[1]
+                # Cacheni yangilaymiz
+                if user_id in USER_DATA_CACHE:
+                    USER_DATA_CACHE[user_id]["full_name"] = full_name
+                else:
+                    USER_DATA_CACHE[user_id] = {"full_name": full_name}
+                return full_name
+    except Exception:
+        pass
+    
+    return None
 
 
 async def append_group_message(
@@ -424,10 +462,16 @@ def _get_stats_for_hours_sync(chat_id: int, hours: int) -> dict[str, Any]:
         except Exception:
             continue
 
+        # Xabardagi full_name dan foydalanamiz (yoki user cache dan)
         full_name = str(row.get("full_name", "")).strip() or "Noma'lum"
         username = str(row.get("username", "")).strip()
 
         if user_id not in per_user:
+            # Userning to'liq ismini cache dan olishga harakat qilamiz
+            cached_name = _get_user_fullname_sync(user_id)
+            if cached_name:
+                full_name = cached_name
+            
             per_user[user_id] = {
                 "user_id": user_id,
                 "full_name": full_name,
@@ -504,10 +548,16 @@ def _get_stats_for_range_sync(chat_id: int, start_dt: datetime, end_dt: datetime
         except Exception:
             continue
 
+        # Xabardagi full_name dan foydalanamiz (yoki user cache dan)
         full_name = str(row.get("full_name", "")).strip() or "Noma'lum"
         username = str(row.get("username", "")).strip()
 
         if user_id not in per_user:
+            # Userning to'liq ismini cache dan olishga harakat qilamiz
+            cached_name = _get_user_fullname_sync(user_id)
+            if cached_name:
+                full_name = cached_name
+            
             per_user[user_id] = {
                 "user_id": user_id,
                 "full_name": full_name,
