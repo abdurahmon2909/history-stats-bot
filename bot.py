@@ -5,6 +5,7 @@ import logging
 import os
 import calendar as cal_module
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ChatMemberStatus, ChatType
@@ -215,42 +216,7 @@ async def start_handler(message: Message, state: FSMContext):
 
     subscribed, status = await check_subscription(user.id)
 
-    # Foydalanuvchi oldin ro'yxatdan o'tganmi?
-    existing_fullname = await get_user_fullname(user.id)
-
-    if existing_fullname:
-        # Allaqachon ro'yxatdan o'tgan
-        await upsert_user(
-            user_id=user.id,
-            full_name=existing_fullname,
-            username=user.username,
-            is_subscribed=1 if subscribed else 0,
-        )
-
-        if status == "inaccessible":
-            await message.answer("Hozircha kanal obunasini avtomatik tekshirib bo'lmadi.")
-            return
-        if status == "error":
-            await message.answer("Tekshiruvda xatolik bo'ldi. Keyinroq urinib ko'ring.")
-            return
-        if not subscribed:
-            await message.answer("Botdan foydalanish uchun avval kanalga a'zo bo'ling.", reply_markup=join_channel_kb())
-            return
-
-        if is_admin(user.id):
-            await message.answer(
-                f"✅ Assalomu alaykum, {existing_fullname}!\n\n"
-                "Admin panelga xush kelibsiz!",
-                reply_markup=admin_main_menu_kb(),
-            )
-        else:
-            await message.answer(
-                f"✅ Xush kelibsiz, {existing_fullname}!\n\n"
-                "Siz yuborgan xabarlar adminlarga yetkaziladi."
-            )
-        return
-
-    # Yangi foydalanuvchi
+    # Foydalanuvchini sheets'ga yozib qo'yamiz (vaqtinchalik ism bilan)
     await upsert_user(
         user_id=user.id,
         full_name=user.full_name,
@@ -259,11 +225,18 @@ async def start_handler(message: Message, state: FSMContext):
     )
 
     if status == "inaccessible":
-        await message.answer("Hozircha kanal obunasini avtomatik tekshirib bo'lmadi.\nAdmin botni kanalga to'liq ulab chiqishi kerak.")
+        await message.answer(
+            "Hozircha kanal obunasini avtomatik tekshirib bo'lmadi.\n"
+            "Admin botni kanalga to'liq ulab chiqishi kerak."
+        )
         return
+
     if status == "error":
-        await message.answer("Tekshiruvda xatolik bo'ldi. Keyinroq qayta urinib ko'ring.")
+        await message.answer(
+            "Tekshiruvda xatolik bo'ldi. Keyinroq qayta urinib ko'ring."
+        )
         return
+
     if not subscribed:
         await message.answer(
             "Botdan foydalanish uchun avval kanalga a'zo bo'ling.",
@@ -271,6 +244,16 @@ async def start_handler(message: Message, state: FSMContext):
         )
         return
 
+    # ADMIN: obuna bo'lgan admin darhol panelga o'tadi, ism so'ralmaydi
+    if is_admin(user.id):
+        await message.answer(
+            f"✅ Assalomu alaykum, {user.full_name}!\n\n"
+            "Admin panelga xush kelibsiz!",
+            reply_markup=admin_main_menu_kb(),
+        )
+        return
+
+    # ODDIY FOYDALANUVCHI: har doim ism so'raymiz
     await state.set_state(RegisterState.waiting_for_fullname)
     await message.answer(
         "✅ Obuna tasdiqlandi!\n\n"
@@ -285,24 +268,22 @@ async def register_fullname(message: Message, state: FSMContext):
     user = message.from_user
     if not user:
         return
+
     full_name = message.text.strip()
     if len(full_name) < 3:
         await message.answer("Ism va familiya kamida 3 harfdan iborat bo'lishi kerak. Qaytadan kiriting:")
         return
+
     await update_user_fullname(user.id, full_name)
+
     await state.clear()
-    if is_admin(user.id):
-        await message.answer(
-            f"✅ Assalomu alaykum, {full_name}!\n\n"
-            "Admin panelga xush kelibsiz!",
-            reply_markup=admin_main_menu_kb(),
-        )
-    else:
-        await message.answer(
-            f"✅ Assalomu alaykum, {full_name}!\n\n"
-            "Xush kelibsiz.\n"
-            "Siz yuborgan xabarlar adminlarga yetkaziladi."
-        )
+
+    # Bu yerda admin bo'lishi mumkin emas, chunki adminlar bu state ga kirmaydi
+    await message.answer(
+        f"✅ Assalomu alaykum, {full_name}!\n\n"
+        "Xush kelibsiz.\n"
+        "Siz yuborgan xabarlar adminlarga yetkaziladi."
+    )
 
 
 @router.callback_query(F.data == "check_sub")
@@ -311,6 +292,7 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
     if not user:
         await callback.answer("Foydalanuvchi topilmadi", show_alert=True)
         return
+
     subscribed, status = await check_subscription(user.id)
     await upsert_user(
         user_id=user.id,
@@ -318,26 +300,39 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
         username=user.username,
         is_subscribed=1 if subscribed else 0,
     )
+
     if status == "inaccessible":
-        await callback.answer("Bot kanal a'zoligini tekshira olmayapti. Admin botni kanalga admin qilishi kerak.", show_alert=True)
+        await callback.answer(
+            "Bot kanal a'zoligini tekshira olmayapti. Admin botni kanalga admin qilishi kerak.",
+            show_alert=True,
+        )
         return
+
     if status == "error":
-        await callback.answer("Tekshiruvda xatolik bo'ldi. Keyinroq qayta urinib ko'ring.", show_alert=True)
+        await callback.answer(
+            "Tekshiruvda xatolik bo'ldi. Keyinroq qayta urinib ko'ring.",
+            show_alert=True,
+        )
         return
+
     if not subscribed:
         await callback.answer("Siz hali kanalga a'zo bo'lmagansiz", show_alert=True)
         return
+
     await callback.answer("Obuna tasdiqlandi ✅")
 
+    # Admin uchun darhol panel
+    if is_admin(user.id):
+        await callback.message.edit_text(
+            f"✅ Assalomu alaykum, {user.full_name}!\n\nAdmin panelga xush kelibsiz!",
+            reply_markup=admin_main_menu_kb(),
+        )
+        return
+
+    # Oddiy foydalanuvchi uchun ism so'rash
     existing = await get_user_fullname(user.id)
     if existing:
-        if is_admin(user.id):
-            await callback.message.edit_text(
-                f"✅ Assalomu alaykum, {existing}!\n\nAdmin panelga xush kelibsiz!",
-                reply_markup=admin_main_menu_kb(),
-            )
-        else:
-            await callback.message.edit_text("✅ Obuna tasdiqlandi! Botdan foydalanishingiz mumkin.")
+        await callback.message.edit_text("✅ Obuna tasdiqlandi! Botdan foydalanishingiz mumkin.")
         return
 
     await state.set_state(RegisterState.waiting_for_fullname)
@@ -413,7 +408,7 @@ async def custom_report_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# Time handlers (qisqartirilgan, avvalgi versiyadagi kabi)
+# Time handlers
 @router.callback_query(F.data == "time:manual_hour")
 async def manual_hour_input(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -447,12 +442,19 @@ async def back_to_date(callback: CallbackQuery, state: FSMContext):
     if current_state == AdminReportState.waiting_for_start_time:
         await state.set_state(AdminReportState.waiting_for_start_date)
         now = datetime.now()
-        await callback.message.edit_text("📅 BOSHLANG'ICH SANANI qayta tanlang:", reply_markup=create_calendar_kb(now.year, now.month))
+        await callback.message.edit_text(
+            "📅 BOSHLANG'ICH SANANI qayta tanlang:",
+            reply_markup=create_calendar_kb(now.year, now.month)
+        )
     elif current_state == AdminReportState.waiting_for_end_time:
         data = await state.get_data()
         start_date = data.get("start_date")
         await state.set_state(AdminReportState.waiting_for_end_date)
-        await callback.message.edit_text(f"✅ Boshlang'ich sana: {start_date.strftime('%Y-%m-%d')}\n\n📅 TUGASH SANASINI qayta tanlang:", reply_markup=create_calendar_kb(start_date.year, start_date.month))
+        await callback.message.edit_text(
+            f"✅ Boshlang'ich sana: {start_date.strftime('%Y-%m-%d')}\n\n"
+            "📅 TUGASH SANASINI qayta tanlang:",
+            reply_markup=create_calendar_kb(start_date.year, start_date.month)
+        )
     await callback.answer()
 
 
@@ -465,12 +467,21 @@ async def back_to_hour(callback: CallbackQuery, state: FSMContext):
     if current_state == AdminReportState.waiting_for_start_time:
         data = await state.get_data()
         selected_date = data.get("start_date")
-        await callback.message.edit_text(f"✅ Boshlang'ich sana: {selected_date.strftime('%Y-%m-%d')}\n\n⏰ BOSHLANG'ICH SOATNI tanlang:", reply_markup=time_select_kb())
+        await callback.message.edit_text(
+            f"✅ Boshlang'ich sana: {selected_date.strftime('%Y-%m-%d')}\n\n"
+            "⏰ BOSHLANG'ICH SOATNI tanlang:",
+            reply_markup=time_select_kb()
+        )
     elif current_state == AdminReportState.waiting_for_end_time:
         data = await state.get_data()
         start_date = data.get("start_date")
         end_date = data.get("end_date")
-        await callback.message.edit_text(f"✅ Boshlang'ich sana: {start_date.strftime('%Y-%m-%d')}\n✅ Tugash sanasi: {end_date.strftime('%Y-%m-%d')}\n\n⏰ TUGASH SOATINI tanlang:", reply_markup=time_select_kb())
+        await callback.message.edit_text(
+            f"✅ Boshlang'ich sana: {start_date.strftime('%Y-%m-%d')}\n"
+            f"✅ Tugash sanasi: {end_date.strftime('%Y-%m-%d')}\n\n"
+            "⏰ TUGASH SOATINI tanlang:",
+            reply_markup=time_select_kb()
+        )
     await callback.answer()
 
 
@@ -481,7 +492,11 @@ async def select_hour(callback: CallbackQuery, state: FSMContext):
         return
     hour = int(callback.data.split(":")[2])
     await state.update_data(selected_hour=hour)
-    await callback.message.edit_text(f"✅ Tanlangan soat: {hour:02d}\n\n⏰ DAQIQA NI tanlang:", reply_markup=minute_select_kb(hour))
+    await callback.message.edit_text(
+        f"✅ Tanlangan soat: {hour:02d}\n\n"
+        "⏰ DAQIQA NI tanlang:",
+        reply_markup=minute_select_kb(hour)
+    )
     await callback.answer()
 
 
@@ -502,7 +517,11 @@ async def select_minute(callback: CallbackQuery, state: FSMContext):
         start_datetime = datetime.combine(start_date, selected_time.time())
         await state.update_data(start_datetime=start_datetime)
         await state.set_state(AdminReportState.waiting_for_end_date)
-        await callback.message.edit_text(f"✅ Boshlang'ich vaqt: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n\n📅 TUGASH SANASINI tanlang:", reply_markup=create_calendar_kb(start_date.year, start_date.month))
+        await callback.message.edit_text(
+            f"✅ Boshlang'ich vaqt: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n\n"
+            "📅 TUGASH SANASINI tanlang:",
+            reply_markup=create_calendar_kb(start_date.year, start_date.month)
+        )
     elif current_state == AdminReportState.waiting_for_end_time:
         data = await state.get_data()
         end_date = data.get("end_date")
@@ -512,16 +531,30 @@ async def select_minute(callback: CallbackQuery, state: FSMContext):
             await callback.answer("❌ Tugash vaqti boshlang'ich vaqtdan oldin bo'lishi mumkin emas!", show_alert=True)
             return
         await state.clear()
-        await callback.message.edit_text(f"📊 Hisobot tayyorlanmoqda...\n\n📅 Boshlanish: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n📅 Tugash: {end_datetime.strftime('%Y-%m-%d %H:%M')}")
+        await callback.message.edit_text(
+            f"📊 Hisobot tayyorlanmoqda...\n\n"
+            f"📅 Boshlanish: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n"
+            f"📅 Tugash: {end_datetime.strftime('%Y-%m-%d %H:%M')}"
+        )
         stats = await get_stats_for_range(GROUP_CHAT_ID, start_datetime, end_datetime)
         period_label = f"{start_datetime.strftime('%Y-%m-%d %H:%M')} dan {end_datetime.strftime('%Y-%m-%d %H:%M')} gacha"
         os.makedirs("reports", exist_ok=True)
         filename = f"reports/report_{start_datetime.strftime('%Y%m%d_%H%M')}_{end_datetime.strftime('%Y%m%d_%H%M')}_{datetime.now().strftime('%H%M%S')}.pdf"
         await asyncio.to_thread(build_pdf_report, stats, period_label, filename)
-        short_text = f"{period_label} bo'yicha natija tayyor.\nJami xabarlar: {stats['total_messages']}\nFaol foydalanuvchilar: {len(stats['users'])}"
+        short_text = (
+            f"{period_label} bo'yicha natija tayyor.\n"
+            f"Jami xabarlar: {stats['total_messages']}\n"
+            f"Faol foydalanuvchilar: {len(stats['users'])}"
+        )
         await callback.message.answer(short_text)
-        await callback.message.answer_document(FSInputFile(filename), caption=f"📊 {period_label} uchun PDF hisobot")
-        await callback.message.answer("👋 Admin panelga xush kelibsiz!", reply_markup=admin_main_menu_kb())
+        await callback.message.answer_document(
+            FSInputFile(filename),
+            caption=f"📊 {period_label} uchun PDF hisobot",
+        )
+        await callback.message.answer(
+            "👋 Admin panelga xush kelibsiz!",
+            reply_markup=admin_main_menu_kb(),
+        )
     await callback.answer()
 
 
@@ -552,7 +585,11 @@ async def calendar_handler(callback: CallbackQuery, state: FSMContext):
         if current_state == AdminReportState.waiting_for_start_date:
             await state.update_data(start_date=selected_date)
             await state.set_state(AdminReportState.waiting_for_start_time)
-            await callback.message.edit_text(f"✅ Boshlang'ich sana: {selected_date.strftime('%Y-%m-%d')}\n\n⏰ BOSHLANG'ICH SOATNI tanlang:", reply_markup=time_select_kb())
+            await callback.message.edit_text(
+                f"✅ Boshlang'ich sana: {selected_date.strftime('%Y-%m-%d')}\n\n"
+                "⏰ BOSHLANG'ICH SOATNI tanlang:",
+                reply_markup=time_select_kb()
+            )
         elif current_state == AdminReportState.waiting_for_end_date:
             await state.update_data(end_date=selected_date)
             await state.set_state(AdminReportState.waiting_for_end_time)
@@ -561,7 +598,12 @@ async def calendar_handler(callback: CallbackQuery, state: FSMContext):
             if selected_date < start_date:
                 await callback.answer("❌ Tugash sanasi boshlang'ich sanadan oldin bo'lishi mumkin emas!", show_alert=True)
                 return
-            await callback.message.edit_text(f"✅ Boshlang'ich sana: {start_date.strftime('%Y-%m-%d')}\n✅ Tugash sanasi: {selected_date.strftime('%Y-%m-%d')}\n\n⏰ TUGASH SOATINI tanlang:", reply_markup=time_select_kb())
+            await callback.message.edit_text(
+                f"✅ Boshlang'ich sana: {start_date.strftime('%Y-%m-%d')}\n"
+                f"✅ Tugash sanasi: {selected_date.strftime('%Y-%m-%d')}\n\n"
+                "⏰ TUGASH SOATINI tanlang:",
+                reply_markup=time_select_kb()
+            )
         await callback.answer()
     elif action == "ignore":
         await callback.answer()
@@ -587,9 +629,18 @@ async def manual_time_input(message: Message, state: FSMContext):
         start_datetime = datetime.combine(selected_date, selected_time.time())
         await state.update_data(start_datetime=start_datetime)
         await state.set_state(AdminReportState.waiting_for_end_date)
-        await message.answer(f"✅ Boshlang'ich vaqt: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n\n📅 TUGASH SANASINI tanlang:", reply_markup=create_calendar_kb(selected_date.year, selected_date.month))
+        await message.answer(
+            f"✅ Boshlang'ich vaqt: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n\n"
+            "📅 TUGASH SANASINI tanlang:",
+            reply_markup=create_calendar_kb(selected_date.year, selected_date.month)
+        )
     except ValueError:
-        await message.answer("❌ Noto'g'ri format! Iltimos, soatni 0-23 oralig'ida kiriting.\nMasalan: 14 yoki 14:30\n\nQaytadan kiriting yoki bekor qiling:", reply_markup=cancel_report_kb())
+        await message.answer(
+            "❌ Noto'g'ri format! Iltimos, soatni 0-23 oralig'ida kiriting.\n"
+            "Masalan: 14 yoki 14:30\n\n"
+            "Qaytadan kiriting yoki bekor qiling:",
+            reply_markup=cancel_report_kb(),
+        )
 
 
 @router.message(AdminReportState.waiting_for_end_time)
@@ -611,21 +662,44 @@ async def manual_end_time_input(message: Message, state: FSMContext):
         start_datetime = data.get("start_datetime")
         end_datetime = datetime.combine(end_date, selected_time.time())
         if end_datetime < start_datetime:
-            await message.answer("❌ Tugash vaqti boshlang'ich vaqtdan oldin bo'lishi mumkin emas!\nQaytadan kiriting:", reply_markup=cancel_report_kb())
+            await message.answer(
+                "❌ Tugash vaqti boshlang'ich vaqtdan oldin bo'lishi mumkin emas!\n"
+                "Qaytadan kiriting:",
+                reply_markup=cancel_report_kb(),
+            )
             return
         await state.clear()
-        await message.answer(f"📊 Hisobot tayyorlanmoqda...\n\n📅 Boshlanish: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n📅 Tugash: {end_datetime.strftime('%Y-%m-%d %H:%M')}")
+        await message.answer(
+            f"📊 Hisobot tayyorlanmoqda...\n\n"
+            f"📅 Boshlanish: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n"
+            f"📅 Tugash: {end_datetime.strftime('%Y-%m-%d %H:%M')}"
+        )
         stats = await get_stats_for_range(GROUP_CHAT_ID, start_datetime, end_datetime)
         period_label = f"{start_datetime.strftime('%Y-%m-%d %H:%M')} dan {end_datetime.strftime('%Y-%m-%d %H:%M')} gacha"
         os.makedirs("reports", exist_ok=True)
         filename = f"reports/report_{start_datetime.strftime('%Y%m%d_%H%M')}_{end_datetime.strftime('%Y%m%d_%H%M')}_{datetime.now().strftime('%H%M%S')}.pdf"
         await asyncio.to_thread(build_pdf_report, stats, period_label, filename)
-        short_text = f"{period_label} bo'yicha natija tayyor.\nJami xabarlar: {stats['total_messages']}\nFaol foydalanuvchilar: {len(stats['users'])}"
+        short_text = (
+            f"{period_label} bo'yicha natija tayyor.\n"
+            f"Jami xabarlar: {stats['total_messages']}\n"
+            f"Faol foydalanuvchilar: {len(stats['users'])}"
+        )
         await message.answer(short_text)
-        await message.answer_document(FSInputFile(filename), caption=f"📊 {period_label} uchun PDF hisobot")
-        await message.answer("👋 Admin panelga xush kelibsiz!", reply_markup=admin_main_menu_kb())
+        await message.answer_document(
+            FSInputFile(filename),
+            caption=f"📊 {period_label} uchun PDF hisobot",
+        )
+        await message.answer(
+            "👋 Admin panelga xush kelibsiz!",
+            reply_markup=admin_main_menu_kb(),
+        )
     except ValueError:
-        await message.answer("❌ Noto'g'ri format! Iltimos, soatni 0-23 oralig'ida kiriting.\nMasalan: 14 yoki 14:30\n\nQaytadan kiriting yoki bekor qiling:", reply_markup=cancel_report_kb())
+        await message.answer(
+            "❌ Noto'g'ri format! Iltimos, soatni 0-23 oralig'ida kiriting.\n"
+            "Masalan: 14 yoki 14:30\n\n"
+            "Qaytadan kiriting yoki bekor qiling:",
+            reply_markup=cancel_report_kb(),
+        )
 
 
 # Tez hisobotlar uchun handler
@@ -641,15 +715,33 @@ async def quick_report_handler(callback: CallbackQuery):
         return
     await callback.answer("PDF tayyorlanmoqda...")
     stats = await get_stats_for_hours(GROUP_CHAT_ID, hours)
-    labels = {2: "2 soat", 4: "4 soat", 8: "8 soat", 24: "1 kun", 72: "3 kun", 168: "1 hafta", 720: "1 oy"}
+    labels = {
+        2: "2 soat",
+        4: "4 soat",
+        8: "8 soat",
+        24: "1 kun",
+        72: "3 kun",
+        168: "1 hafta",
+        720: "1 oy",
+    }
     period_label = labels.get(hours, f"{hours} soat")
     os.makedirs("reports", exist_ok=True)
     filename = f"reports/report_{hours}h_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
     await asyncio.to_thread(build_pdf_report, stats, period_label, filename)
-    short_text = f"So'nggi {period_label} bo'yicha natija tayyor.\nJami xabarlar: {stats['total_messages']}\nFaol foydalanuvchilar: {len(stats['users'])}"
+    short_text = (
+        f"So'nggi {period_label} bo'yicha natija tayyor.\n"
+        f"Jami xabarlar: {stats['total_messages']}\n"
+        f"Faol foydalanuvchilar: {len(stats['users'])}"
+    )
     await callback.message.answer(short_text)
-    await callback.message.answer_document(FSInputFile(filename), caption=f"So'nggi {period_label} bo'yicha PDF hisobot")
-    await callback.message.answer("👋 Admin panelga xush kelibsiz!", reply_markup=admin_main_menu_kb())
+    await callback.message.answer_document(
+        FSInputFile(filename),
+        caption=f"So'nggi {period_label} bo'yicha PDF hisobot",
+    )
+    await callback.message.answer(
+        "👋 Admin panelga xush kelibsiz!",
+        reply_markup=admin_main_menu_kb(),
+    )
 
 
 @router.message(Command("id"))
@@ -690,13 +782,21 @@ async def private_message_router(message: Message, state: FSMContext):
     subscribed, status = await check_subscription(user.id)
     await upsert_user(user.id, user.full_name, user.username, 1 if subscribed else 0)
     if status == "inaccessible":
-        await message.answer("Hozircha kanal obunasini avtomatik tekshirib bo'lmadi.\nKeyinroq urinib ko'ring.")
+        await message.answer(
+            "Hozircha kanal obunasini avtomatik tekshirib bo'lmadi.\n"
+            "Keyinroq urinib ko'ring."
+        )
         return
     if status == "error":
-        await message.answer("Tekshiruvda xatolik bo'ldi. Keyinroq qayta urinib ko'ring.")
+        await message.answer(
+            "Tekshiruvda xatolik bo'ldi. Keyinroq qayta urinib ko'ring."
+        )
         return
     if not subscribed:
-        await message.answer("Avval kanalga a'zo bo'ling.", reply_markup=join_channel_kb())
+        await message.answer(
+            "Avval kanalga a'zo bo'ling.",
+            reply_markup=join_channel_kb(),
+        )
         return
     for admin_id in ADMIN_IDS:
         try:
@@ -725,6 +825,6 @@ async def main():
     finally:
         await stop_background_flush()
 
+
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    asyncio.run(main())
