@@ -70,6 +70,7 @@ class AdminReportState(StatesGroup):
     waiting_for_end_time = State()
 
 
+
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
@@ -265,6 +266,17 @@ async def start_handler(message: Message, state: FSMContext):
         "Masalan: Alisher Navoiy\n\n"
         "Bu ma'lumot hisobotlarda ko'rsatiladi."
     )
+
+@router.message(F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}))
+async def group_message_tracker(message: Message):
+    # Har qanday guruh xabarida print chiqarish
+    print(f"🔵 GURUH XABARI: chat_id={message.chat.id}, text={message.text}")
+    
+    if message.chat.id != GROUP_CHAT_ID:
+        print(f"   ⚠️ Noto'g'ri chat: {message.chat.id} != {GROUP_CHAT_ID}")
+        return
+    
+    print(f"   ✅ To'g'ri chat, davom etilmoqda...")
 
 
 @router.message(RegisterState.waiting_for_fullname)
