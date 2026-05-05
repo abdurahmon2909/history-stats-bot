@@ -265,19 +265,7 @@ async def start_handler(message: Message, state: FSMContext):
         "Masalan: Alisher Navoiy\n\n"
         "Bu ma'lumot hisobotlarda ko'rsatiladi."
     )
-
-@router.message(F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}))
-async def group_message_tracker(message: Message):
-    # Har qanday guruh xabarida print chiqarish
-    print(f"🔵 GURUH XABARI: chat_id={message.chat.id}, text={message.text}")
     
-    if message.chat.id != GROUP_CHAT_ID:
-        print(f"   ⚠️ Noto'g'ri chat: {message.chat.id} != {GROUP_CHAT_ID}")
-        return
-    
-    print(f"   ✅ To'g'ri chat, davom etilmoqda...")
-
-
 @router.message(RegisterState.waiting_for_fullname)
 async def register_fullname(message: Message, state: FSMContext):
     user = message.from_user
@@ -781,7 +769,7 @@ async def group_message_tracker(message: Message):
         full_name=full_name,
         username=message.from_user.username,
         text=text,
-        sent_at=message.date.astimezone(timezone.utc),
+        sent_at=message.date.astimezone(timezone.utc),  # Tuzatildi
     )
 
 
