@@ -47,13 +47,17 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 )
+from group_events import router as group_events_router
+from broadcast import router as broadcast_router
+
 
 bot = Bot(BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 router = Router()
 dp.include_router(router)
-
+dp.include_router(group_events_router)
+dp.include_router(broadcast_router)
 
 class RegisterState(StatesGroup):
     waiting_for_fullname = State()
