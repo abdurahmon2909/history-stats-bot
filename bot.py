@@ -41,15 +41,14 @@ from sheets import (
     start_background_flush,
     stop_background_flush,
 )
+from group_events import router as group_events_router
+from broadcast import router as broadcast_router
 from pdf_report import build_pdf_report
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 )
-from group_events import router as group_events_router
-from broadcast import router as broadcast_router
-
 
 bot = Bot(BOT_TOKEN)
 storage = MemoryStorage()
