@@ -3,11 +3,14 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.enums import ChatType
 from aiogram.types import Message
 
+from config import BOT_TOKEN
+
 router = Router()
+bot = Bot(BOT_TOKEN)
 
 
 @router.message(F.new_chat_members)
@@ -20,9 +23,9 @@ async def auto_delete_join_message(message: Message):
     if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
         return
     
-    # Botning o'zini qo'shilishini filter qilish
+    # Faqat botning O'ZINI qo'shilishini filter qilish
     for user in message.new_chat_members:
-        if user.is_bot:
+        if user.is_bot and user.id == bot.id:
             return
     
     try:
@@ -44,7 +47,7 @@ async def auto_delete_leave_message(message: Message):
         return
     
     # Botning o'zini chiqishini filter qilish
-    if message.left_chat_member.is_bot:
+    if message.left_chat_member.is_bot and message.left_chat_member.id == bot.id:
         return
     
     try:
