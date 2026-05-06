@@ -17,7 +17,7 @@ from aiogram.types import (
 from config import ADMIN_IDS, GROUP_CHAT_ID
 from sheets import get_all_users
 
-router = Router()
+router = Router(name="broadcast_router")  # Routerga nom bering
 
 
 class BroadcastState(StatesGroup):
@@ -25,11 +25,10 @@ class BroadcastState(StatesGroup):
 
 
 def broadcast_kb() -> InlineKeyboardMarkup:
-    """Xabarni tasdiqlash uchun keyboard"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="✅ Ha, yuborish", callback_data="broadcast:confirm"),
+                InlineKeyboardButton(text="✅ Ha, barchaga yuborish", callback_data="broadcast:confirm"),
                 InlineKeyboardButton(text="👥 Faqat guruhga", callback_data="broadcast:to_group"),
             ],
             [
@@ -40,9 +39,13 @@ def broadcast_kb() -> InlineKeyboardMarkup:
     )
 
 
-async def start_broadcast(message: Message, state: FSMContext):
-    """Broadcast boshlash"""
+# ============ /broadcast KOMANDASI ============
+@router.message(Command("broadcast"))
+async def broadcast_command(message: Message, state: FSMContext):
+    """Adminlarga xabar yuborish imkoniyati"""
     user_id = message.from_user.id
+    
+    # Admin tekshiruvi
     if user_id not in ADMIN_IDS:
         await message.reply("❌ Bu buyruq faqat adminlar uchun!")
         return
@@ -59,25 +62,22 @@ async def start_broadcast(message: Message, state: FSMContext):
         "❌ Bekor qilish uchun /cancel yozing",
         parse_mode="Markdown"
     )
-
-
-@router.message(Command("broadcast"))
-async def broadcast_command(message: Message, state: FSMContext):
-    """Adminlarga xabar yuborish imkoniyati"""
-    await start_broadcast(message, state)
+    logging.info(f"Admin {user_id} broadcast boshladi")
 
 
 @router.message(Command("cancel"))
-async def cancel_broadcast(message: Message, state: FSMContext):
+async def cancel_command(message: Message, state: FSMContext):
     """Xabar yuborishni bekor qilish"""
     await state.clear()
     await message.answer("❌ Xabar yuborish bekor qilindi.")
 
 
+# ============ XABARNI QABUL QILISH ============
 @router.message(BroadcastState.waiting_for_message)
 async def get_broadcast_message(message: Message, state: FSMContext):
     """Admin xabarini saqlash"""
     user_id = message.from_user.id
+    
     if user_id not in ADMIN_IDS:
         await message.reply("❌ Siz admin emassiz!")
         await state.clear()
@@ -87,23 +87,26 @@ async def get_broadcast_message(message: Message, state: FSMContext):
     message_data = {}
     
     if message.text:
-        message_data = {"type": "text", "text": message.text}
+        message_data = {
+            "type": "text", 
+            "text": message.text
+        }
     elif message.photo:
         message_data = {
             "type": "photo", 
-            "content": message.photo[-1].file_id,
+            "file_id": message.photo[-1].file_id,
             "caption": message.caption or ""
         }
     elif message.video:
         message_data = {
             "type": "video",
-            "content": message.video.file_id,
+            "file_id": message.video.file_id,
             "caption": message.caption or ""
         }
     elif message.document:
         message_data = {
             "type": "document",
-            "content": message.document.file_id,
+            "file_id": message.document.file_id,
             "caption": message.caption or ""
         }
     else:
@@ -115,7 +118,7 @@ async def get_broadcast_message(message: Message, state: FSMContext):
     
     await state.update_data(broadcast_message=message_data)
     
-    # Xabarni oldindan ko'rish
+    # Preview
     preview_text = "📢 **XABAR OLDINDAN KO'RISH**\n\n"
     
     if message_data["type"] == "text":
@@ -135,11 +138,17 @@ async def get_broadcast_message(message: Message, state: FSMContext):
     
     preview_text += "\n\n✅ Xabar yuborilsinmi?"
     
-    await message.answer(preview_text, reply_markup=broadcast_kb(), parse_mode="Markdown")
+    await message.answer(
+        preview_text, 
+        reply_markup=broadcast_kb(), 
+        parse_mode="Markdown"
+    )
+    logging.info(f"Admin {user_id} xabar tayyor, tasdiqlanishi kutilmoqda")
 
 
+# ============ PREVIEW ============
 @router.callback_query(F.data == "broadcast:preview")
-async def preview_message(callback: CallbackQuery, state: FSMContext):
+async def preview_callback(callback: CallbackQuery, state: FSMContext):
     """Xabarni oldindan ko'rish"""
     data = await state.get_data()
     msg = data.get("broadcast_message")
@@ -149,19 +158,32 @@ async def preview_message(callback: CallbackQuery, state: FSMContext):
         return
     
     if msg["type"] == "text":
-        await callback.message.answer(f"📋 **MATN:**\n```\n{msg['text']}\n```", parse_mode="Markdown")
+        await callback.message.answer(
+            f"📋 **MATN PREVIEW:**\n```\n{msg['text']}\n```", 
+            parse_mode="Markdown"
+        )
     elif msg["type"] == "photo":
-        await callback.message.answer_photo(msg["content"], caption=msg.get("caption", "📷 Rasm"))
+        await callback.message.answer_photo(
+            msg["file_id"], 
+            caption=msg.get("caption", "📷 Rasm preview")
+        )
     elif msg["type"] == "video":
-        await callback.message.answer_video(msg["content"], caption=msg.get("caption", "🎥 Video"))
+        await callback.message.answer_video(
+            msg["file_id"], 
+            caption=msg.get("caption", "🎥 Video preview")
+        )
     elif msg["type"] == "document":
-        await callback.message.answer_document(msg["content"], caption=msg.get("caption", "📎 Hujjat"))
+        await callback.message.answer_document(
+            msg["file_id"], 
+            caption=msg.get("caption", "📎 Hujjat preview")
+        )
     
     await callback.answer()
 
 
+# ============ FAQAT GURUHGA ============
 @router.callback_query(F.data == "broadcast:to_group")
-async def send_to_group(callback: CallbackQuery, state: FSMContext, bot: Bot):
+async def to_group_callback(callback: CallbackQuery, state: FSMContext, bot: Bot):
     """Faqat guruhga yuborish"""
     data = await state.get_data()
     msg = data.get("broadcast_message")
@@ -176,11 +198,11 @@ async def send_to_group(callback: CallbackQuery, state: FSMContext, bot: Bot):
         if msg["type"] == "text":
             await bot.send_message(GROUP_CHAT_ID, msg["text"])
         elif msg["type"] == "photo":
-            await bot.send_photo(GROUP_CHAT_ID, msg["content"], caption=msg.get("caption"))
+            await bot.send_photo(GROUP_CHAT_ID, msg["file_id"], caption=msg.get("caption"))
         elif msg["type"] == "video":
-            await bot.send_video(GROUP_CHAT_ID, msg["content"], caption=msg.get("caption"))
+            await bot.send_video(GROUP_CHAT_ID, msg["file_id"], caption=msg.get("caption"))
         elif msg["type"] == "document":
-            await bot.send_document(GROUP_CHAT_ID, msg["content"], caption=msg.get("caption"))
+            await bot.send_document(GROUP_CHAT_ID, msg["file_id"], caption=msg.get("caption"))
         
         await state.clear()
         await callback.message.edit_text("✅ Xabar guruhga yuborildi!")
@@ -190,8 +212,9 @@ async def send_to_group(callback: CallbackQuery, state: FSMContext, bot: Bot):
     await callback.answer()
 
 
+# ============ BARCHAGA YUBORISH ============
 @router.callback_query(F.data == "broadcast:confirm")
-async def send_to_all(callback: CallbackQuery, state: FSMContext, bot: Bot):
+async def to_all_callback(callback: CallbackQuery, state: FSMContext, bot: Bot):
     """Barcha foydalanuvchilarga yuborish"""
     data = await state.get_data()
     msg = data.get("broadcast_message")
@@ -220,16 +243,17 @@ async def send_to_all(callback: CallbackQuery, state: FSMContext, bot: Bot):
             if msg["type"] == "text":
                 await bot.send_message(user_id, msg["text"])
             elif msg["type"] == "photo":
-                await bot.send_photo(user_id, msg["content"], caption=msg.get("caption"))
+                await bot.send_photo(user_id, msg["file_id"], caption=msg.get("caption"))
             elif msg["type"] == "video":
-                await bot.send_video(user_id, msg["content"], caption=msg.get("caption"))
+                await bot.send_video(user_id, msg["file_id"], caption=msg.get("caption"))
             elif msg["type"] == "document":
-                await bot.send_document(user_id, msg["content"], caption=msg.get("caption"))
+                await bot.send_document(user_id, msg["file_id"], caption=msg.get("caption"))
             
             success += 1
-            await asyncio.sleep(0.05)
-        except Exception:
+            await asyncio.sleep(0.05)  # Rate limit
+        except Exception as e:
             fail += 1
+            logging.error(f"Yuborilmadi user {user.get('user_id')}: {e}")
     
     await state.clear()
     await callback.message.edit_text(
@@ -241,8 +265,9 @@ async def send_to_all(callback: CallbackQuery, state: FSMContext, bot: Bot):
     await callback.answer()
 
 
+# ============ BEKOR QILISH ============
 @router.callback_query(F.data == "broadcast:cancel")
-async def cancel_broadcast_callback(callback: CallbackQuery, state: FSMContext):
+async def cancel_callback(callback: CallbackQuery, state: FSMContext):
     """Bekor qilish"""
     await state.clear()
     await callback.message.edit_text("❌ Xabar yuborish bekor qilindi.")
