@@ -48,7 +48,6 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 )
 from group_events import router as group_events_router
-from broadcast import router as broadcast_router
 
 bot = Bot(BOT_TOKEN)
 storage = MemoryStorage()
@@ -56,8 +55,160 @@ dp = Dispatcher(storage=storage)
 router = Router()
 dp.include_router(router)
 dp.include_router(group_events_router)
-dp.include_router(broadcast_router)
 
+# ============ BROADCAST FUNKSIYASI ============
+
+class BroadcastState(StatesGroup):
+    waiting_for_broadcast_message = State()
+
+
+@router.message(Command("broadcast"))
+async def broadcast_start(message: Message, state: FSMContext):
+    """Broadcast boshlash"""
+    user_id = message.from_user.id
+    if not is_admin(user_id):
+        await message.reply("❌ Bu buyruq faqat adminlar uchun!")
+        return
+    
+    await state.set_state(BroadcastState.waiting_for_broadcast_message)
+    await message.answer(
+        "📢 **ELON YUBORISH**\n\n"
+        "Yubormoqchi bo'lgan xabaringizni kiriting:\n\n"
+        "• Matn - oddiy matn\n"
+        "• Rasm - rasm + caption\n"
+        "• Video - video + caption\n\n"
+        "❌ Bekor qilish: /cancel",
+        parse_mode="Markdown"
+    )
+
+
+@router.message(Command("cancel"))
+async def cancel_broadcast(message: Message, state: FSMContext):
+    """Bekor qilish"""
+    current_state = await state.get_state()
+    if current_state:
+        await state.clear()
+        await message.answer("❌ Bekor qilindi!")
+    else:
+        await message.answer("Hech narsa bekor qilinmadi.")
+
+
+@router.message(BroadcastState.waiting_for_broadcast_message)
+async def get_broadcast_message(message: Message, state: FSMContext):
+    """Xabarni qabul qilish"""
+    user_id = message.from_user.id
+    if not is_admin(user_id):
+        await message.reply("❌ Siz admin emassiz!")
+        await state.clear()
+        return
+    
+    # Xabarni saqlash
+    if message.text:
+        await state.update_data(broadcast_type="text", content=message.text)
+    elif message.photo:
+        await state.update_data(
+            broadcast_type="photo", 
+            content=message.photo[-1].file_id,
+            caption=message.caption or ""
+        )
+    elif message.video:
+        await state.update_data(
+            broadcast_type="video",
+            content=message.video.file_id,
+            caption=message.caption or ""
+        )
+    else:
+        await message.answer("❌ Faqat matn, rasm yoki video yuboring!")
+        return
+    
+    data = await state.get_data()
+    
+    # Preview
+    preview = "📢 **XABAR PREVIEW:**\n\n"
+    if data["broadcast_type"] == "text":
+        preview += f"📝 Matn:\n```\n{data['content'][:300]}\n```"
+    elif data["broadcast_type"] == "photo":
+        preview += "🖼 Rasm yuboriladi\n"
+        if data.get("caption"):
+            preview += f"📝 Sarlavha: {data['caption'][:100]}"
+    elif data["broadcast_type"] == "video":
+        preview += "🎥 Video yuboriladi\n"
+        if data.get("caption"):
+            preview += f"📝 Sarlavha: {data['caption'][:100]}"
+    
+    preview += "\n\n✅ Yuborish uchun **ha** yozing\n❌ Bekor qilish uchun **yo'q** yozing"
+    
+    await message.answer(preview, parse_mode="Markdown")
+    await state.update_data(waiting_confirmation=True)
+
+
+@router.message(BroadcastState.waiting_for_broadcast_message)
+async def confirm_and_send(message: Message, state: FSMContext):
+    """Tasdiqlash va yuborish"""
+    user_id = message.from_user.id
+    if not is_admin(user_id):
+        return
+    
+    text = message.text.lower().strip()
+    
+    if text in ["ha", "yubor", "yes", "ok"]:
+        data = await state.get_data()
+        
+        broadcast_type = data.get("broadcast_type")
+        content = data.get("content")
+        caption = data.get("caption", "")
+        
+        if not content:
+            await message.answer("❌ Xabar topilmadi! Qaytadan /broadcast yozing.")
+            await state.clear()
+            return
+        
+        await message.answer("📤 Xabar yuborilmoqda...")
+        
+        # Barcha foydalanuvchilarni olish
+        users = await get_all_users()
+        
+        if not users:
+            await message.answer("❌ Hech qanday foydalanuvchi topilmadi!")
+            await state.clear()
+            return
+        
+        success = 0
+        fail = 0
+        
+        for user in users:
+            try:
+                uid = user.get("user_id")
+                if not uid:
+                    continue
+                
+                if broadcast_type == "text":
+                    await bot.send_message(uid, content)
+                elif broadcast_type == "photo":
+                    await bot.send_photo(uid, content, caption=caption)
+                elif broadcast_type == "video":
+                    await bot.send_video(uid, content, caption=caption)
+                
+                success += 1
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                fail += 1
+                logging.error(f"Yuborilmadi {uid}: {e}")
+        
+        await state.clear()
+        await message.answer(
+            f"✅ **Xabar yuborish yakunlandi!**\n\n"
+            f"✅ Muvaffaqiyatli: {success}\n"
+            f"❌ Muvaffaqiyatsiz: {fail}\n"
+            f"👥 Jami: {len(users)}"
+        )
+    
+    elif text in ["yo'q", "no", "cancel"]:
+        await state.clear()
+        await message.answer("❌ Xabar yuborish bekor qilindi!")
+    
+    else:
+        await message.answer("❌ Iltimos, **ha** yoki **yo'q** deb javob bering!")
 # Global bot ID
 BOT_ID = None
 
