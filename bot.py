@@ -269,17 +269,7 @@ async def start_handler(message: Message, state: FSMContext):
         "Bu ma'lumot hisobotlarda ko'rsatiladi."
     )
 
-@router.message(Command("broadcast"))
-async def broadcast_command(message: Message, state: FSMContext):
-    """Barcha foydalanuvchilarga elon yuborish (faqat adminlar)"""
-    user_id = message.from_user.id
-    if not is_admin(user_id):
-        await message.answer("❌ Bu buyruq faqat adminlar uchun!")
-        return
-    
-    # broadcast modulidagi funksiyani chaqiramiz
-    from broadcast import start_broadcast
-    await start_broadcast(message, state)
+
     
 @router.message(RegisterState.waiting_for_fullname)
 async def register_fullname(message: Message, state: FSMContext):
