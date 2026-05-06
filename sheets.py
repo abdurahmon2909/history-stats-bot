@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import time
+import logging
+import random
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -34,6 +36,10 @@ USER_ROW_CACHE: dict[int, int] = {}
 # User data cache
 USER_DATA_CACHE: dict[int, dict[str, str]] = {}
 
+# User fullname cache with TTL
+USER_FULLNAME_CACHE: dict[int, tuple[str, float]] = {}
+CACHE_TTL = 300  # 5 daqiqa
+
 # Message buffer
 MESSAGE_BUFFER: list[list[str]] = []
 BUFFER_LOCK = asyncio.Lock()
@@ -59,18 +65,20 @@ def _connect_sync():
 
 
 def _retry_sync(func, *args, **kwargs):
-    delays = [1, 2, 4, 8]
+    """Exponential backoff bilan qayta urinish"""
+    delays = [1, 2, 4, 8, 16]
     last_error = None
 
     for delay in [0] + delays:
         try:
             if delay:
-                time.sleep(delay)
+                time.sleep(delay + random.uniform(0, 1))
             return func(*args, **kwargs)
         except APIError as e:
             last_error = e
             err_text = str(e).lower()
             if "quota exceeded" in err_text or "429" in err_text or "rate limit" in err_text:
+                logging.warning(f"API limit hit, retrying after {delay}s: {e}")
                 continue
             raise
         except Exception as e:
@@ -109,13 +117,15 @@ def _get_ws_sync(title: str):
 
 
 def _warm_user_cache_sync():
-    global USER_ROW_CACHE, USER_DATA_CACHE
+    global USER_ROW_CACHE, USER_DATA_CACHE, USER_FULLNAME_CACHE
 
     ws = _get_ws_sync(WS_USERS)
     values = _retry_sync(ws.get_all_values)
 
     USER_ROW_CACHE = {}
     USER_DATA_CACHE = {}
+    USER_FULLNAME_CACHE = {}
+    current_time = time.time()
 
     for idx, row in enumerate(values[1:], start=2):
         if not row:
@@ -140,6 +150,8 @@ def _warm_user_cache_sync():
             "first_seen": first_seen,
             "last_seen": last_seen,
         }
+        if full_name:
+            USER_FULLNAME_CACHE[user_id] = (full_name, current_time)
 
 
 async def init_sheets():
@@ -175,7 +187,7 @@ def _upsert_user_sync(
     username: str | None,
     is_subscribed: int | None = None,
 ):
-    global USER_ROW_CACHE, USER_DATA_CACHE
+    global USER_ROW_CACHE, USER_DATA_CACHE, USER_FULLNAME_CACHE
 
     ws = _get_ws_sync(WS_USERS)
     now = datetime.now(timezone.utc).isoformat()
@@ -214,6 +226,8 @@ def _upsert_user_sync(
             "first_seen": first_seen,
             "last_seen": now,
         }
+        if full_name:
+            USER_FULLNAME_CACHE[user_id] = (full_name, time.time())
 
     else:
         values = [
@@ -236,11 +250,13 @@ def _upsert_user_sync(
             "first_seen": now,
             "last_seen": now,
         }
+        if full_name:
+            USER_FULLNAME_CACHE[user_id] = (full_name, time.time())
 
 
 def _update_user_fullname_sync(user_id: int, new_full_name: str):
     """Foydalanuvchining to'liq ismini yangilaydi"""
-    global USER_ROW_CACHE, USER_DATA_CACHE
+    global USER_ROW_CACHE, USER_DATA_CACHE, USER_FULLNAME_CACHE
     
     ws = _get_ws_sync(WS_USERS)
     row_num = USER_ROW_CACHE.get(user_id)
@@ -266,6 +282,7 @@ def _update_user_fullname_sync(user_id: int, new_full_name: str):
             "first_seen": now,
             "last_seen": now,
         }
+        USER_FULLNAME_CACHE[user_id] = (new_full_name, time.time())
         return
     
     cached = USER_DATA_CACHE.get(user_id, {})
@@ -284,6 +301,7 @@ def _update_user_fullname_sync(user_id: int, new_full_name: str):
     
     USER_DATA_CACHE[user_id]["full_name"] = new_full_name
     USER_DATA_CACHE[user_id]["last_seen"] = now
+    USER_FULLNAME_CACHE[user_id] = (new_full_name, time.time())
 
 
 async def update_user_fullname(user_id: int, full_name: str):
@@ -296,12 +314,19 @@ async def get_user_fullname(user_id: int) -> str | None:
 
 
 def _get_user_fullname_sync(user_id: int) -> str | None:
-    global USER_DATA_CACHE, USER_ROW_CACHE
+    global USER_DATA_CACHE, USER_ROW_CACHE, USER_FULLNAME_CACHE
     
-    # Avval cache dan tekshiramiz
+    # Avval TTL cache dan tekshiramiz
+    if user_id in USER_FULLNAME_CACHE:
+        full_name, timestamp = USER_FULLNAME_CACHE[user_id]
+        if time.time() - timestamp < CACHE_TTL:
+            return full_name
+    
+    # Keyin oddiy cache dan tekshiramiz
     if user_id in USER_DATA_CACHE:
         full_name = USER_DATA_CACHE[user_id].get("full_name", "")
         if full_name and full_name.strip() != "":
+            USER_FULLNAME_CACHE[user_id] = (full_name, time.time())
             return full_name
     
     # Cache da bo'lmasa, Google Sheets'dan o'qiymiz
@@ -318,9 +343,10 @@ def _get_user_fullname_sync(user_id: int) -> str | None:
                     USER_DATA_CACHE[user_id]["full_name"] = full_name
                 else:
                     USER_DATA_CACHE[user_id] = {"full_name": full_name}
+                USER_FULLNAME_CACHE[user_id] = (full_name, time.time())
                 return full_name
     except Exception as e:
-        logging.error(f"User fullname olishda xato: {e}")
+        logging.error(f"User fullname olishda xato (user_id={user_id}): {e}")
     
     return None
 
