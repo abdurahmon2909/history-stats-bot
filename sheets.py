@@ -199,7 +199,7 @@ def _upsert_user_sync(
         current_sub = cached.get("is_subscribed", "0")
         first_seen = cached.get("first_seen", now) or now
         new_sub = str(is_subscribed) if is_subscribed is not None else current_sub
-        
+
         # Agar full_name bo'sh bo'lsa, eski nomni saqlaymiz
         if not full_name or full_name.strip() == "":
             full_name = cached.get("full_name", "")
@@ -257,10 +257,10 @@ def _upsert_user_sync(
 def _update_user_fullname_sync(user_id: int, new_full_name: str):
     """Foydalanuvchining to'liq ismini yangilaydi"""
     global USER_ROW_CACHE, USER_DATA_CACHE, USER_FULLNAME_CACHE
-    
+
     ws = _get_ws_sync(WS_USERS)
     row_num = USER_ROW_CACHE.get(user_id)
-    
+
     if not row_num:
         now = datetime.now(timezone.utc).isoformat()
         values = [
@@ -272,7 +272,7 @@ def _update_user_fullname_sync(user_id: int, new_full_name: str):
             now,
         ]
         _retry_sync(ws.append_row, values)
-        
+
         current_rows = _retry_sync(lambda: len(ws.col_values(1)))
         USER_ROW_CACHE[user_id] = current_rows
         USER_DATA_CACHE[user_id] = {
@@ -284,10 +284,10 @@ def _update_user_fullname_sync(user_id: int, new_full_name: str):
         }
         USER_FULLNAME_CACHE[user_id] = (new_full_name, time.time())
         return
-    
+
     cached = USER_DATA_CACHE.get(user_id, {})
     now = datetime.now(timezone.utc).isoformat()
-    
+
     values = [[
         str(user_id),
         new_full_name,
@@ -296,9 +296,9 @@ def _update_user_fullname_sync(user_id: int, new_full_name: str):
         cached.get("first_seen", now),
         now,
     ]]
-    
+
     _retry_sync(ws.update, range_name=f"A{row_num}:F{row_num}", values=values)
-    
+
     USER_DATA_CACHE[user_id]["full_name"] = new_full_name
     USER_DATA_CACHE[user_id]["last_seen"] = now
     USER_FULLNAME_CACHE[user_id] = (new_full_name, time.time())
@@ -315,20 +315,20 @@ async def get_user_fullname(user_id: int) -> str | None:
 
 def _get_user_fullname_sync(user_id: int) -> str | None:
     global USER_DATA_CACHE, USER_ROW_CACHE, USER_FULLNAME_CACHE
-    
+
     # Avval TTL cache dan tekshiramiz
     if user_id in USER_FULLNAME_CACHE:
         full_name, timestamp = USER_FULLNAME_CACHE[user_id]
         if time.time() - timestamp < CACHE_TTL:
             return full_name
-    
+
     # Keyin oddiy cache dan tekshiramiz
     if user_id in USER_DATA_CACHE:
         full_name = USER_DATA_CACHE[user_id].get("full_name", "")
         if full_name and full_name.strip() != "":
             USER_FULLNAME_CACHE[user_id] = (full_name, time.time())
             return full_name
-    
+
     # Cache da bo'lmasa, Google Sheets'dan o'qiymiz
     try:
         ws = _get_ws_sync(WS_USERS)
@@ -337,7 +337,6 @@ def _get_user_fullname_sync(user_id: int) -> str | None:
             row = ws.row_values(cell.row)
             if len(row) > 1 and row[1]:
                 full_name = row[1]
-                # Cacheni yangilaymiz
                 USER_ROW_CACHE[user_id] = cell.row
                 if user_id in USER_DATA_CACHE:
                     USER_DATA_CACHE[user_id]["full_name"] = full_name
@@ -347,7 +346,7 @@ def _get_user_fullname_sync(user_id: int) -> str | None:
                 return full_name
     except Exception as e:
         logging.error(f"User fullname olishda xato (user_id={user_id}): {e}")
-    
+
     return None
 
 
@@ -361,7 +360,7 @@ async def append_group_message(
     sent_at: datetime,
 ):
     sent_at_tashkent = sent_at.astimezone(TASHKENT_TZ)
-    
+
     row = [
         str(chat_id),
         str(message_id),
@@ -453,6 +452,9 @@ def _get_stats_for_hours_sync(chat_id: int, hours: int) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     start_dt = now - timedelta(hours=hours)
 
+    # TUZATILDI: start_dt UTC da, shuning uchun astimezone ishlatamiz
+    start_dt_tashkent = start_dt.astimezone(TASHKENT_TZ)
+
     filtered = []
     for row in rows:
         try:
@@ -471,7 +473,8 @@ def _get_stats_for_hours_sync(chat_id: int, hours: int) -> dict[str, Any]:
             if sent_at.tzinfo is None:
                 sent_at = sent_at.replace(tzinfo=TASHKENT_TZ)
 
-            if sent_at < start_dt.replace(tzinfo=TASHKENT_TZ):
+            # TUZATILDI: ikkala vaqt ham bir xil timezone da taqqoslanadi
+            if sent_at < start_dt_tashkent:
                 continue
 
             filtered.append(row)
@@ -489,16 +492,14 @@ def _get_stats_for_hours_sync(chat_id: int, hours: int) -> dict[str, Any]:
         except Exception:
             continue
 
-        # Xabardagi full_name dan foydalanamiz (yoki user cache dan)
         full_name = str(row.get("full_name", "")).strip() or "Noma'lum"
         username = str(row.get("username", "")).strip()
 
         if user_id not in per_user:
-            # Userning to'liq ismini cache dan olishga harakat qilamiz
             cached_name = _get_user_fullname_sync(user_id)
             if cached_name:
                 full_name = cached_name
-            
+
             per_user[user_id] = {
                 "user_id": user_id,
                 "full_name": full_name,
@@ -553,7 +554,6 @@ def _get_stats_for_range_sync(chat_id: int, start_dt: datetime, end_dt: datetime
             if sent_at.tzinfo is None:
                 sent_at = sent_at.replace(tzinfo=TASHKENT_TZ)
 
-            # Vaqt oralig'ini tekshirish
             start_dt_tz = start_dt.astimezone(TASHKENT_TZ) if start_dt.tzinfo else start_dt.replace(tzinfo=TASHKENT_TZ)
             end_dt_tz = end_dt.astimezone(TASHKENT_TZ) if end_dt.tzinfo else end_dt.replace(tzinfo=TASHKENT_TZ)
 
@@ -575,16 +575,14 @@ def _get_stats_for_range_sync(chat_id: int, start_dt: datetime, end_dt: datetime
         except Exception:
             continue
 
-        # Xabardagi full_name dan foydalanamiz (yoki user cache dan)
         full_name = str(row.get("full_name", "")).strip() or "Noma'lum"
         username = str(row.get("username", "")).strip()
 
         if user_id not in per_user:
-            # Userning to'liq ismini cache dan olishga harakat qilamiz
             cached_name = _get_user_fullname_sync(user_id)
             if cached_name:
                 full_name = cached_name
-            
+
             per_user[user_id] = {
                 "user_id": user_id,
                 "full_name": full_name,
@@ -609,9 +607,7 @@ def _get_stats_for_range_sync(chat_id: int, start_dt: datetime, end_dt: datetime
         "total_messages": total_messages,
         "users": result,
     }
-# sheets.py faylining oxiriga qo'shing:
 
-# sheets.py faylining oxiriga qo'shing:
 
 async def get_all_users() -> list[dict[str, Any]]:
     """Barcha foydalanuvchilarni qaytaradi"""
@@ -623,18 +619,18 @@ def _get_all_users_sync() -> list[dict[str, Any]]:
     try:
         ws = _get_ws_sync(WS_USERS)
         values = _retry_sync(ws.get_all_values)
-        
+
         users = []
         for row in values[1:]:  # Birinchi qator header
             if not row or len(row) < 1:
                 continue
-            
+
             try:
                 user_id = int(str(row[0]).strip())
                 full_name = row[1] if len(row) > 1 else ""
                 username = row[2] if len(row) > 2 else ""
                 is_subscribed = row[3] if len(row) > 3 else "0"
-                
+
                 users.append({
                     "user_id": user_id,
                     "full_name": full_name,
@@ -644,10 +640,10 @@ def _get_all_users_sync() -> list[dict[str, Any]]:
             except (ValueError, IndexError) as e:
                 logging.error(f"Foydalanuvchini o'qishda xato (row={row}): {e}")
                 continue
-        
+
         logging.info(f"Jami {len(users)} ta foydalanuvchi yuklandi")
         return users
-        
+
     except Exception as e:
         logging.error(f"get_all_users xatosi: {e}")
         return []
