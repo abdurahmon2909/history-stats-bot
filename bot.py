@@ -49,7 +49,6 @@ logging.basicConfig(
 )
 from group_events import router as group_events_router
 from broadcast import router as broadcast_router
-dp.include_router(broadcast_router) 
 
 bot = Bot(BOT_TOKEN)
 storage = MemoryStorage()
