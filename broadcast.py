@@ -41,9 +41,9 @@ def confirm_broadcast_kb() -> InlineKeyboardMarkup:
     )
 
 
-@router.message(Command("broadcast"))
-async def broadcast_command(message: Message, state: FSMContext):
-    """Adminlarga xabar yuborish imkoniyati"""
+# ============ START BROADCAST FUNKSIYASI ============
+async def start_broadcast(message: Message, state: FSMContext):
+    """Broadcast boshlash (admin panelidan chaqirish uchun)"""
     user_id = message.from_user.id
     if user_id not in ADMIN_IDS:
         await message.reply("❌ Bu buyruq faqat adminlar uchun!")
@@ -61,6 +61,13 @@ async def broadcast_command(message: Message, state: FSMContext):
         "❌ Bekor qilish uchun /cancel buyrug'ini yozing.",
         parse_mode="Markdown"
     )
+
+
+# ============ BROADCAST KOMANDASI ============
+@router.message(Command("broadcast"))
+async def broadcast_command(message: Message, state: FSMContext):
+    """Adminlarga xabar yuborish imkoniyati"""
+    await start_broadcast(message, state)
 
 
 @router.message(Command("cancel"))
