@@ -611,6 +611,8 @@ def _get_stats_for_range_sync(chat_id: int, start_dt: datetime, end_dt: datetime
     }
 # sheets.py faylining oxiriga qo'shing:
 
+# sheets.py faylining oxiriga qo'shing:
+
 async def get_all_users() -> list[dict[str, Any]]:
     """Barcha foydalanuvchilarni qaytaradi"""
     return await asyncio.to_thread(_get_all_users_sync)
@@ -618,31 +620,37 @@ async def get_all_users() -> list[dict[str, Any]]:
 
 def _get_all_users_sync() -> list[dict[str, Any]]:
     """Barcha foydalanuvchilarni synchronously qaytaradi"""
-    ws = _get_ws_sync(WS_USERS)
-    values = _retry_sync(ws.get_all_values)
-    
-    users = []
-    for row in values[1:]:  # Birinchi qator header
-        if not row:
-            continue
+    try:
+        ws = _get_ws_sync(WS_USERS)
+        values = _retry_sync(ws.get_all_values)
         
-        try:
-            user_id = int(str(row[0]).strip())
-            full_name = row[1] if len(row) > 1 else ""
-            username = row[2] if len(row) > 2 else ""
-            is_subscribed = row[3] if len(row) > 3 else "0"
+        users = []
+        for row in values[1:]:  # Birinchi qator header
+            if not row or len(row) < 1:
+                continue
             
-            users.append({
-                "user_id": user_id,
-                "full_name": full_name,
-                "username": username,
-                "is_subscribed": is_subscribed,
-            })
-        except Exception as e:
-            logging.error(f"Foydalanuvchini o'qishda xato: {e}")
-            continue
-    
-    return users
+            try:
+                user_id = int(str(row[0]).strip())
+                full_name = row[1] if len(row) > 1 else ""
+                username = row[2] if len(row) > 2 else ""
+                is_subscribed = row[3] if len(row) > 3 else "0"
+                
+                users.append({
+                    "user_id": user_id,
+                    "full_name": full_name,
+                    "username": username,
+                    "is_subscribed": is_subscribed,
+                })
+            except (ValueError, IndexError) as e:
+                logging.error(f"Foydalanuvchini o'qishda xato (row={row}): {e}")
+                continue
+        
+        logging.info(f"Jami {len(users)} ta foydalanuvchi yuklandi")
+        return users
+        
+    except Exception as e:
+        logging.error(f"get_all_users xatosi: {e}")
+        return []
 
 
 async def get_user_count() -> int:
