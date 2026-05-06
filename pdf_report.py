@@ -158,7 +158,8 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         img.preserveAspectRatio = True
         img.hAlign = "CENTER"
         
-        max_height = 85 * mm
+        # Logo balandligini avtomatik moslash (maksimal 120mm)
+        max_height = 120 * mm  # 85mm dan 120mm ga oshirildi
         if img.drawHeight > max_height:
             img.drawHeight = max_height
         
