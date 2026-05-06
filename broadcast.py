@@ -22,28 +22,26 @@ router = Router()
 
 class BroadcastState(StatesGroup):
     waiting_for_message = State()
-    waiting_for_confirmation = State()
 
 
-def confirm_broadcast_kb() -> InlineKeyboardMarkup:
+def broadcast_kb() -> InlineKeyboardMarkup:
     """Xabarni tasdiqlash uchun keyboard"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="✅ Ha, yuborish", callback_data="broadcast:confirm"),
-                InlineKeyboardButton(text="❌ Yo'q", callback_data="broadcast:cancel"),
+                InlineKeyboardButton(text="👥 Faqat guruhga", callback_data="broadcast:to_group"),
             ],
             [
                 InlineKeyboardButton(text="📋 Xabarni ko'rish", callback_data="broadcast:preview"),
-                InlineKeyboardButton(text="👥 Faqat guruhga", callback_data="broadcast:to_group"),
+                InlineKeyboardButton(text="❌ Bekor qilish", callback_data="broadcast:cancel"),
             ]
         ]
     )
 
 
-# ============ START BROADCAST FUNKSIYASI ============
 async def start_broadcast(message: Message, state: FSMContext):
-    """Broadcast boshlash (admin panelidan chaqirish uchun)"""
+    """Broadcast boshlash"""
     user_id = message.from_user.id
     if user_id not in ADMIN_IDS:
         await message.reply("❌ Bu buyruq faqat adminlar uchun!")
@@ -52,18 +50,17 @@ async def start_broadcast(message: Message, state: FSMContext):
     await state.set_state(BroadcastState.waiting_for_message)
     await message.answer(
         "📢 **ELON YUBORISH**\n\n"
-        "Yubormoqchi bo'lgan xabaringizni kiriting.\n\n"
-        "📝 **Matn** - oddiy matn yuborish\n"
-        "🖼 **Rasm** - rasm + caption yuborish\n"
-        "🎥 **Video** - video + caption yuborish\n"
-        "📎 **Hujjat** - fayl + caption yuborish\n\n"
+        "Yubormoqchi bo'lgan xabaringizni kiriting:\n\n"
+        "• Matn - oddiy matn\n"
+        "• Rasm - rasm + caption\n"
+        "• Video - video + caption\n"
+        "• Hujjat - fayl + caption\n\n"
         "⚠️ Xabar BARCHA foydalanuvchilarga yuboriladi!\n\n"
-        "❌ Bekor qilish uchun /cancel buyrug'ini yozing.",
+        "❌ Bekor qilish uchun /cancel yozing",
         parse_mode="Markdown"
     )
 
 
-# ============ BROADCAST KOMANDASI ============
 @router.message(Command("broadcast"))
 async def broadcast_command(message: Message, state: FSMContext):
     """Adminlarga xabar yuborish imkoniyati"""
@@ -73,12 +70,8 @@ async def broadcast_command(message: Message, state: FSMContext):
 @router.message(Command("cancel"))
 async def cancel_broadcast(message: Message, state: FSMContext):
     """Xabar yuborishni bekor qilish"""
-    current_state = await state.get_state()
-    if current_state is not None:
-        await state.clear()
-        await message.answer("❌ Xabar yuborish bekor qilindi.")
-    else:
-        await message.answer("Hech qanday jarayon yo'q.")
+    await state.clear()
+    await message.answer("❌ Xabar yuborish bekor qilindi.")
 
 
 @router.message(BroadcastState.waiting_for_message)
@@ -91,254 +84,166 @@ async def get_broadcast_message(message: Message, state: FSMContext):
         return
     
     # Xabar turini aniqlash
-    message_data = {
-        "type": None,
-        "content": None,
-        "caption": None,
-        "text": None,
-    }
+    message_data = {}
     
     if message.text:
-        message_data["type"] = "text"
-        message_data["text"] = message.text
+        message_data = {"type": "text", "text": message.text}
     elif message.photo:
-        message_data["type"] = "photo"
-        message_data["content"] = message.photo[-1].file_id
-        message_data["caption"] = message.caption or ""
+        message_data = {
+            "type": "photo", 
+            "content": message.photo[-1].file_id,
+            "caption": message.caption or ""
+        }
     elif message.video:
-        message_data["type"] = "video"
-        message_data["content"] = message.video.file_id
-        message_data["caption"] = message.caption or ""
+        message_data = {
+            "type": "video",
+            "content": message.video.file_id,
+            "caption": message.caption or ""
+        }
     elif message.document:
-        message_data["type"] = "document"
-        message_data["content"] = message.document.file_id
-        message_data["caption"] = message.caption or ""
+        message_data = {
+            "type": "document",
+            "content": message.document.file_id,
+            "caption": message.caption or ""
+        }
     else:
         await message.answer(
-            "❌ Faqat matn, rasm, video yoki hujjat yuborishingiz mumkin!\n"
-            "Qaytadan kiriting yoki /cancel bilan bekor qiling:"
+            "❌ Faqat matn, rasm, video yoki hujjat yuboring!\n"
+            "Qaytadan kiriting yoki /cancel yozing:"
         )
         return
     
     await state.update_data(broadcast_message=message_data)
     
     # Xabarni oldindan ko'rish
-    preview_text = f"📢 **XABAR OLDINDAN KO'RISH**\n\n"
-    preview_text += f"📍 **Yuboriladigan joy:** Barcha foydalanuvchilar\n\n"
+    preview_text = "📢 **XABAR OLDINDAN KO'RISH**\n\n"
     
     if message_data["type"] == "text":
-        preview_text += f"📝 Matn:\n\n"
-        preview_text += f"```\n{message_data['text'][:500]}\n```"
-        if len(message_data['text']) > 500:
-            preview_text += "\n...(davomi bor)"
+        preview_text += f"📝 Matn:\n```\n{message_data['text'][:300]}\n```"
     elif message_data["type"] == "photo":
         preview_text += "🖼 Rasm yuboriladi\n"
-        if message_data["caption"]:
-            preview_text += f"\n📝 Sarlavha:\n```\n{message_data['caption'][:200]}\n```"
+        if message_data.get("caption"):
+            preview_text += f"📝 Sarlavha: {message_data['caption'][:100]}"
     elif message_data["type"] == "video":
         preview_text += "🎥 Video yuboriladi\n"
-        if message_data["caption"]:
-            preview_text += f"\n📝 Sarlavha:\n```\n{message_data['caption'][:200]}\n```"
+        if message_data.get("caption"):
+            preview_text += f"📝 Sarlavha: {message_data['caption'][:100]}"
     elif message_data["type"] == "document":
         preview_text += "📎 Hujjat yuboriladi\n"
-        if message_data["caption"]:
-            preview_text += f"\n📝 Sarlavha:\n```\n{message_data['caption'][:200]}\n```"
+        if message_data.get("caption"):
+            preview_text += f"📝 Sarlavha: {message_data['caption'][:100]}"
     
-    preview_text += f"\n\n✅ Xabar yuborilsinmi?"
+    preview_text += "\n\n✅ Xabar yuborilsinmi?"
     
-    # Tugmalar bilan birga xabar yuborish
-    await message.answer(
-        preview_text,
-        reply_markup=confirm_broadcast_kb(),
-        parse_mode="Markdown"
-    )
+    await message.answer(preview_text, reply_markup=broadcast_kb(), parse_mode="Markdown")
 
 
 @router.callback_query(F.data == "broadcast:preview")
 async def preview_message(callback: CallbackQuery, state: FSMContext):
     """Xabarni oldindan ko'rish"""
-    user_id = callback.from_user.id
-    if user_id not in ADMIN_IDS:
-        await callback.answer("Siz admin emassiz!", show_alert=True)
-        return
-    
     data = await state.get_data()
-    broadcast_message = data.get("broadcast_message")
+    msg = data.get("broadcast_message")
     
-    if not broadcast_message:
+    if not msg:
         await callback.answer("Xabar topilmadi!", show_alert=True)
         return
     
-    try:
-        # Xabarni oldindan ko'rish uchun yuborish
-        if broadcast_message["type"] == "text":
-            await callback.message.answer(
-                f"📋 **XABAR MATNI**\n\n```\n{broadcast_message['text']}\n```",
-                parse_mode="Markdown"
-            )
-        elif broadcast_message["type"] == "photo":
-            await callback.message.answer_photo(
-                broadcast_message["content"],
-                caption=broadcast_message["caption"] or "📷 Rasm"
-            )
-        elif broadcast_message["type"] == "video":
-            await callback.message.answer_video(
-                broadcast_message["content"],
-                caption=broadcast_message["caption"] or "🎥 Video"
-            )
-        elif broadcast_message["type"] == "document":
-            await callback.message.answer_document(
-                broadcast_message["content"],
-                caption=broadcast_message["caption"] or "📎 Hujjat"
-            )
-        
-        await callback.answer("Xabar yuqorida ko'rsatildi ✅")
-    except Exception as e:
-        await callback.answer(f"Xatolik: {e}", show_alert=True)
+    if msg["type"] == "text":
+        await callback.message.answer(f"📋 **MATN:**\n```\n{msg['text']}\n```", parse_mode="Markdown")
+    elif msg["type"] == "photo":
+        await callback.message.answer_photo(msg["content"], caption=msg.get("caption", "📷 Rasm"))
+    elif msg["type"] == "video":
+        await callback.message.answer_video(msg["content"], caption=msg.get("caption", "🎥 Video"))
+    elif msg["type"] == "document":
+        await callback.message.answer_document(msg["content"], caption=msg.get("caption", "📎 Hujjat"))
+    
+    await callback.answer()
 
 
 @router.callback_query(F.data == "broadcast:to_group")
-async def send_to_group_only(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    """Faqat guruhga xabar yuborish"""
-    user_id = callback.from_user.id
-    if user_id not in ADMIN_IDS:
-        await callback.answer("Siz admin emassiz!", show_alert=True)
-        return
-    
+async def send_to_group(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    """Faqat guruhga yuborish"""
     data = await state.get_data()
-    broadcast_message = data.get("broadcast_message")
+    msg = data.get("broadcast_message")
     
-    if not broadcast_message:
+    if not msg:
         await callback.answer("Xabar topilmadi!", show_alert=True)
         return
     
-    await callback.message.edit_text("📤 Xabar guruhga yuborilmoqda...")
+    await callback.message.edit_text("📤 Guruhga yuborilmoqda...")
     
     try:
-        # Faqat guruhga yuborish
-        if broadcast_message["type"] == "text":
-            await bot.send_message(GROUP_CHAT_ID, broadcast_message["text"])
-        elif broadcast_message["type"] == "photo":
-            await bot.send_photo(
-                GROUP_CHAT_ID, 
-                broadcast_message["content"], 
-                caption=broadcast_message["caption"]
-            )
-        elif broadcast_message["type"] == "video":
-            await bot.send_video(
-                GROUP_CHAT_ID, 
-                broadcast_message["content"], 
-                caption=broadcast_message["caption"]
-            )
-        elif broadcast_message["type"] == "document":
-            await bot.send_document(
-                GROUP_CHAT_ID, 
-                broadcast_message["content"], 
-                caption=broadcast_message["caption"]
-            )
+        if msg["type"] == "text":
+            await bot.send_message(GROUP_CHAT_ID, msg["text"])
+        elif msg["type"] == "photo":
+            await bot.send_photo(GROUP_CHAT_ID, msg["content"], caption=msg.get("caption"))
+        elif msg["type"] == "video":
+            await bot.send_video(GROUP_CHAT_ID, msg["content"], caption=msg.get("caption"))
+        elif msg["type"] == "document":
+            await bot.send_document(GROUP_CHAT_ID, msg["content"], caption=msg.get("caption"))
         
         await state.clear()
-        
-        await callback.message.edit_text(
-            f"✅ **Xabar guruhga yuborildi!**\n\n"
-            f"👥 Guruh ID: `{GROUP_CHAT_ID}`\n"
-        )
-        
+        await callback.message.edit_text("✅ Xabar guruhga yuborildi!")
     except Exception as e:
-        await callback.message.edit_text(
-            f"❌ **Xatolik!**\n\n"
-            f"Xabar yuborilmadi: {str(e)}\n\n"
-            f"Bot guruhga qo'shilganligini tekshiring."
-        )
+        await callback.message.edit_text(f"❌ Xatolik: {e}")
     
     await callback.answer()
 
 
 @router.callback_query(F.data == "broadcast:confirm")
-async def confirm_broadcast_to_all(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    """Xabarni BARCHA foydalanuvchilarga yuborish"""
-    user_id = callback.from_user.id
-    if user_id not in ADMIN_IDS:
-        await callback.answer("Siz admin emassiz!", show_alert=True)
-        return
-    
+async def send_to_all(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    """Barcha foydalanuvchilarga yuborish"""
     data = await state.get_data()
-    broadcast_message = data.get("broadcast_message")
+    msg = data.get("broadcast_message")
     
-    if not broadcast_message:
+    if not msg:
         await callback.answer("Xabar topilmadi!", show_alert=True)
         return
     
-    await callback.message.edit_text("📤 Xabar barcha foydalanuvchilarga yuborilmoqda...\n⏳ Bu bir necha daqiqa vaqt olishi mumkin...")
+    await callback.message.edit_text("📤 Barcha foydalanuvchilarga yuborilmoqda...\n⏳ Bu biroz vaqt olishi mumkin...")
     
-    # Barcha foydalanuvchilarni olish
-    all_users = await get_all_users()
+    users = await get_all_users()
     
-    if not all_users:
+    if not users:
         await callback.message.edit_text("❌ Hech qanday foydalanuvchi topilmadi!")
         return
     
-    success_count = 0
-    fail_count = 0
+    success = 0
+    fail = 0
     
-    # Har bir foydalanuvchiga xabar yuborish
-    for user_data in all_users:
+    for user in users:
         try:
-            user_id = user_data.get("user_id")
+            user_id = user.get("user_id")
             if not user_id:
                 continue
             
-            if broadcast_message["type"] == "text":
-                await bot.send_message(user_id, broadcast_message["text"])
-            elif broadcast_message["type"] == "photo":
-                await bot.send_photo(
-                    user_id, 
-                    broadcast_message["content"], 
-                    caption=broadcast_message["caption"]
-                )
-            elif broadcast_message["type"] == "video":
-                await bot.send_video(
-                    user_id, 
-                    broadcast_message["content"], 
-                    caption=broadcast_message["caption"]
-                )
-            elif broadcast_message["type"] == "document":
-                await bot.send_document(
-                    user_id, 
-                    broadcast_message["content"], 
-                    caption=broadcast_message["caption"]
-                )
+            if msg["type"] == "text":
+                await bot.send_message(user_id, msg["text"])
+            elif msg["type"] == "photo":
+                await bot.send_photo(user_id, msg["content"], caption=msg.get("caption"))
+            elif msg["type"] == "video":
+                await bot.send_video(user_id, msg["content"], caption=msg.get("caption"))
+            elif msg["type"] == "document":
+                await bot.send_document(user_id, msg["content"], caption=msg.get("caption"))
             
-            success_count += 1
-            
-            # Rate limitga rioya qilish (sekundiga 20 ta xabar)
+            success += 1
             await asyncio.sleep(0.05)
-            
-        except Exception as e:
-            fail_count += 1
-            logging.error(f"Xabar yuborilmadi (user_id={user_id}): {e}")
+        except Exception:
+            fail += 1
     
     await state.clear()
-    
     await callback.message.edit_text(
         f"✅ **Xabar yuborish yakunlandi!**\n\n"
-        f"📊 **Statistika:**\n"
-        f"✅ Muvaffaqiyatli: {success_count}\n"
-        f"❌ Muvaffaqiyatsiz: {fail_count}\n"
-        f"👥 Jami foydalanuvchilar: {len(all_users)}"
+        f"✅ Muvaffaqiyatli: {success}\n"
+        f"❌ Muvaffaqiyatsiz: {fail}\n"
+        f"👥 Jami: {len(users)}"
     )
-    
     await callback.answer()
 
 
 @router.callback_query(F.data == "broadcast:cancel")
 async def cancel_broadcast_callback(callback: CallbackQuery, state: FSMContext):
-    """Xabar yuborishni bekor qilish"""
-    user_id = callback.from_user.id
-    if user_id not in ADMIN_IDS:
-        await callback.answer("Siz admin emassiz!", show_alert=True)
-        return
-    
+    """Bekor qilish"""
     await state.clear()
     await callback.message.edit_text("❌ Xabar yuborish bekor qilindi.")
     await callback.answer()
