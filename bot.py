@@ -41,14 +41,14 @@ from sheets import (
     start_background_flush,
     stop_background_flush,
 )
-from group_events import router as group_events_router
-from broadcast import router as broadcast_router
 from pdf_report import build_pdf_report
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 )
+from group_events import router as group_events_router
+from broadcast import router as broadcast_router
 
 bot = Bot(BOT_TOKEN)
 storage = MemoryStorage()
@@ -57,6 +57,10 @@ router = Router()
 dp.include_router(router)
 dp.include_router(group_events_router)
 dp.include_router(broadcast_router)
+
+# Global bot ID
+BOT_ID = None
+
 
 class RegisterState(StatesGroup):
     waiting_for_fullname = State()
@@ -67,7 +71,6 @@ class AdminReportState(StatesGroup):
     waiting_for_start_time = State()
     waiting_for_end_date = State()
     waiting_for_end_time = State()
-
 
 
 def is_admin(user_id: int) -> bool:
@@ -265,7 +268,8 @@ async def start_handler(message: Message, state: FSMContext):
         "Masalan: Alisher Navoiy\n\n"
         "Bu ma'lumot hisobotlarda ko'rsatiladi."
     )
-    
+
+
 @router.message(RegisterState.waiting_for_fullname)
 async def register_fullname(message: Message, state: FSMContext):
     user = message.from_user
@@ -769,7 +773,7 @@ async def group_message_tracker(message: Message):
         full_name=full_name,
         username=message.from_user.username,
         text=text,
-        sent_at=message.date.astimezone(timezone.utc),  # Tuzatildi
+        sent_at=message.date.astimezone(timezone.utc),
     )
 
 
@@ -819,9 +823,12 @@ async def set_commands():
 
 
 async def main():
+    global BOT_ID
     await set_commands()
     await init_sheets()
+    BOT_ID = (await bot.get_me()).id  # Bot ID sini olish
     await start_background_flush()
+    logging.info(f"Bot ishga tushdi. Bot ID: {BOT_ID}")
     logging.info("Google Sheets ga ulanildi")
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
