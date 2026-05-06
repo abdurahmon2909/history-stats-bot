@@ -824,10 +824,14 @@ async def private_message_router(message: Message, state: FSMContext):
     await message.answer("✅ Xabaringiz adminga yuborildi.")
 
 
+# bot.py faylining oxirgi qismi (taxminan 800-850 qatorlar)
+
 async def set_commands():
+    """Bot uchun komandalar ro'yxatini o'rnatish"""
     commands = [
         BotCommand(command="start", description="Botni ishga tushirish"),
         BotCommand(command="admin", description="Admin panel"),
+        BotCommand(command="broadcast", description="Barcha foydalanuvchilarga elon yuborish"),
         BotCommand(command="id", description="Chat ID ni ko'rish"),
     ]
     await bot.set_my_commands(commands)
@@ -835,7 +839,7 @@ async def set_commands():
 
 async def main():
     global BOT_ID
-    await set_commands()
+    await set_commands()  # ← Shu yerda chaqiriladi
     await init_sheets()
     
     # Bot ID ni olish
@@ -844,15 +848,17 @@ async def main():
     
     # group_events.py dagi botni yangilash
     from group_events import bot as group_bot
-    group_bot.bot = bot  # Bot obyektini ulash
+    group_bot.bot = bot
     
     await start_background_flush()
     logging.info(f"Bot ishga tushdi. Bot ID: {BOT_ID}")
     logging.info("Google Sheets ga ulanildi")
+    
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         await stop_background_flush()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
