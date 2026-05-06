@@ -223,4 +223,4 @@ async def cancel_callback(callback: CallbackQuery, state: FSMContext):
     """Bekor qilish"""
     await state.clear()
     await callback.message.edit_text("❌ Xabar yuborish bekor qilindi!")
-    await callback.answer()b
+    await callback.answer()
