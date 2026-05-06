@@ -15,6 +15,7 @@ from aiogram.types import (
 )
 
 from config import ADMIN_IDS, GROUP_CHAT_ID
+from sheets import get_all_users, get_user_language  # Yangi funksiyalar qo'shiladi
 
 router = Router()
 
@@ -34,27 +35,23 @@ def confirm_broadcast_kb() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="📋 Xabarni ko'rish", callback_data="broadcast:preview"),
+                InlineKeyboardButton(text="👥 Faqat guruhga", callback_data="broadcast:to_group"),
             ]
         ]
     )
 
 
-@router.message(Command("broadcast"))
-async def broadcast_command(message: Message, state: FSMContext):
-    """Adminlarga guruhga xabar yuborish imkoniyati"""
-    user_id = message.from_user.id
-    if user_id not in ADMIN_IDS:
-        await message.reply("❌ Bu buyruq faqat adminlar uchun!")
-        return
-    
+async def start_broadcast(message: Message, state: FSMContext):
+    """Broadcast boshlash"""
     await state.set_state(BroadcastState.waiting_for_message)
     await message.answer(
-        "📢 **GURUHGA XABAR YUBORISH**\n\n"
+        "📢 **ELON YUBORISH**\n\n"
         "Yubormoqchi bo'lgan xabaringizni kiriting.\n\n"
         "📝 **Matn** - oddiy matn yuborish\n"
         "🖼 **Rasm** - rasm + caption yuborish\n"
         "🎥 **Video** - video + caption yuborish\n"
         "📎 **Hujjat** - fayl + caption yuborish\n\n"
+        "⚠️ Xabar BARCHA foydalanuvchilarga yuboriladi!\n\n"
         "❌ Bekor qilish uchun /cancel buyrug'ini yozing.",
         parse_mode="Markdown"
     )
@@ -114,6 +111,7 @@ async def get_broadcast_message(message: Message, state: FSMContext):
     
     # Xabarni oldindan ko'rish
     preview_text = f"📢 **XABAR OLDINDAN KO'RISH**\n\n"
+    preview_text += f"📍 **Yuboriladigan joy:** Barcha foydalanuvchilar\n\n"
     
     if message_data["type"] == "text":
         preview_text += f"📝 Matn:\n\n`{message_data['text'][:500]}`"
@@ -184,9 +182,9 @@ async def preview_message(callback: CallbackQuery, state: FSMContext):
         await callback.answer(f"Xatolik: {e}", show_alert=True)
 
 
-@router.callback_query(F.data == "broadcast:confirm")
-async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    """Xabarni guruhga yuborish"""
+@router.callback_query(F.data == "broadcast:to_group")
+async def send_to_group_only(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    """Faqat guruhga xabar yuborish"""
     user_id = callback.from_user.id
     if user_id not in ADMIN_IDS:
         await callback.answer("Siz admin emassiz!", show_alert=True)
@@ -202,7 +200,7 @@ async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot
     await callback.message.edit_text("📤 Xabar guruhga yuborilmoqda...")
     
     try:
-        # Xabarni guruhga yuborish
+        # Faqat guruhga yuborish
         if broadcast_message["type"] == "text":
             await bot.send_message(GROUP_CHAT_ID, broadcast_message["text"])
         elif broadcast_message["type"] == "photo":
@@ -227,7 +225,7 @@ async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot
         await state.clear()
         
         await callback.message.edit_text(
-            f"✅ **Xabar muvaffaqiyatli yuborildi!**\n\n"
+            f"✅ **Xabar guruhga yuborildi!**\n\n"
             f"👥 Guruh ID: `{GROUP_CHAT_ID}`\n"
         )
         
@@ -237,6 +235,83 @@ async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot
             f"Xabar yuborilmadi: {str(e)}\n\n"
             f"Bot guruhga qo'shilganligini tekshiring."
         )
+    
+    await callback.answer()
+
+
+@router.callback_query(F.data == "broadcast:confirm")
+async def confirm_broadcast_to_all(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    """Xabarni BARCHA foydalanuvchilarga yuborish"""
+    user_id = callback.from_user.id
+    if user_id not in ADMIN_IDS:
+        await callback.answer("Siz admin emassiz!", show_alert=True)
+        return
+    
+    data = await state.get_data()
+    broadcast_message = data.get("broadcast_message")
+    
+    if not broadcast_message:
+        await callback.answer("Xabar topilmadi!", show_alert=True)
+        return
+    
+    await callback.message.edit_text("📤 Xabar barcha foydalanuvchilarga yuborilmoqda...\n⏳ Bu bir necha daqiqa vaqt olishi mumkin...")
+    
+    # Barcha foydalanuvchilarni olish
+    all_users = await get_all_users()
+    
+    if not all_users:
+        await callback.message.edit_text("❌ Hech qanday foydalanuvchi topilmadi!")
+        return
+    
+    success_count = 0
+    fail_count = 0
+    
+    # Har bir foydalanuvchiga xabar yuborish
+    for user_data in all_users:
+        try:
+            user_id = user_data.get("user_id")
+            if not user_id:
+                continue
+            
+            if broadcast_message["type"] == "text":
+                await bot.send_message(user_id, broadcast_message["text"])
+            elif broadcast_message["type"] == "photo":
+                await bot.send_photo(
+                    user_id, 
+                    broadcast_message["content"], 
+                    caption=broadcast_message["caption"]
+                )
+            elif broadcast_message["type"] == "video":
+                await bot.send_video(
+                    user_id, 
+                    broadcast_message["content"], 
+                    caption=broadcast_message["caption"]
+                )
+            elif broadcast_message["type"] == "document":
+                await bot.send_document(
+                    user_id, 
+                    broadcast_message["content"], 
+                    caption=broadcast_message["caption"]
+                )
+            
+            success_count += 1
+            
+            # Rate limitga rioya qilish
+            await asyncio.sleep(0.05)
+            
+        except Exception as e:
+            fail_count += 1
+            logging.error(f"Xabar yuborilmadi (user_id={user_id}): {e}")
+    
+    await state.clear()
+    
+    await callback.message.edit_text(
+        f"✅ **Xabar yuborish yakunlandi!**\n\n"
+        f"📊 **Statistika:**\n"
+        f"✅ Muvaffaqiyatli: {success_count}\n"
+        f"❌ Muvaffaqiyatsiz: {fail_count}\n"
+        f"👥 Jami foydalanuvchilar: {len(all_users)}"
+    )
     
     await callback.answer()
 
