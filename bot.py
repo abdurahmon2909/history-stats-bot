@@ -40,6 +40,8 @@ from sheets import (
     get_user_fullname,
     start_background_flush,
     stop_background_flush,
+    get_all_users,
+    get_user_count,
 )
 from pdf_report import build_pdf_report
 
@@ -47,6 +49,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 )
+
 from group_events import router as group_events_router
 
 bot = Bot(BOT_TOKEN)
@@ -56,29 +59,10 @@ router = Router()
 dp.include_router(router)
 dp.include_router(group_events_router)
 
-# ============ BROADCAST FUNKSIYASI ============
-
 # ============ BROADCAST FUNKSIYASI (TO'LIQ INLINE TUGMALI) ============
 
 class BroadcastState(StatesGroup):
     waiting_for_message = State()
-    selecting_target = State()
-
-
-def get_target_keyboard():
-    """Yuborish joyini tanlash tugmalari"""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🤖 BARCHA USERLARGA", callback_data="target_all_users"),
-                InlineKeyboardButton(text="👥 GURUHLARGA", callback_data="target_groups"),
-            ],
-            [
-                InlineKeyboardButton(text="📋 XABARNI QAYTA KO'RISH", callback_data="preview_message"),
-                InlineKeyboardButton(text="❌ BEKOR QILISH", callback_data="cancel_broadcast"),
-            ]
-        ]
-    )
 
 
 def get_confirm_keyboard():
@@ -86,8 +70,8 @@ def get_confirm_keyboard():
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="✅ HA, YUBORISH", callback_data="confirm_send"),
-                InlineKeyboardButton(text="❌ YO'Q, QAYTARISH", callback_data="back_to_target"),
+                InlineKeyboardButton(text="✅ HA, BARCHAGA YUBORISH", callback_data="confirm_send"),
+                InlineKeyboardButton(text="👥 FAQAT GURUHGA", callback_data="send_to_group"),
             ],
             [
                 InlineKeyboardButton(text="📋 XABARNI QAYTA KO'RISH", callback_data="preview_message"),
@@ -95,25 +79,6 @@ def get_confirm_keyboard():
             ]
         ]
     )
-
-
-def get_group_keyboard(groups):
-    """Guruhlarni tanlash tugmalari"""
-    keyboard = []
-    for group in groups:
-        keyboard.append([
-            InlineKeyboardButton(
-                text=f"{group['name']}", 
-                callback_data=f"group_{group['id']}"
-            )
-        ])
-    
-    keyboard.append([
-        InlineKeyboardButton(text="🔙 ORTGA", callback_data="back_to_target"),
-        InlineKeyboardButton(text="❌ BEKOR QILISH", callback_data="cancel_broadcast"),
-    ])
-    
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def get_result_keyboard():
@@ -122,7 +87,6 @@ def get_result_keyboard():
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="📢 YANGI XABAR YUBORISH", callback_data="new_broadcast"),
-                InlineKeyboardButton(text="🏠 ADMIN PANEL", callback_data="admin:back_to_main"),
             ]
         ]
     )
@@ -200,7 +164,7 @@ async def get_broadcast_message(message: Message, state: FSMContext):
     await show_preview(message, state)
 
 
-async def show_preview(message: Message, state: FSMContext, edit: bool = False):
+async def show_preview(message: Message, state: FSMContext):
     """Xabarni oldindan ko'rish"""
     data = await state.get_data()
     msg = data.get("message_data")
@@ -231,32 +195,11 @@ async def show_preview(message: Message, state: FSMContext, edit: bool = False):
     preview += "\n\n📊 **Ma'lumot:**\n"
     total_users = await get_user_count()
     preview += f"👥 Botdagi userlar soni: {total_users}\n"
-    
-    # Guruhlarni olish (bot a'zo bo'lgan guruhlar)
-    groups = await get_bot_groups()
-    preview += f"👥 Guruhlar soni: {len(groups)}"
+    preview += f"👥 Guruh ID: `{GROUP_CHAT_ID}`"
     
     preview += "\n\n📍 **Qayerga yuboramiz?**"
     
-    if edit and hasattr(message, 'edit_text'):
-        await message.edit_text(preview, reply_markup=get_target_keyboard(), parse_mode="Markdown")
-    else:
-        await message.answer(preview, reply_markup=get_target_keyboard(), parse_mode="Markdown")
-
-
-def get_bot_groups_sync():
-    """Bot a'zo bo'lgan guruhlarni olish (synchronous)"""
-    # Bu yerda Google Sheets'dan guruhlar ro'yxatini olish mumkin
-    # Hozircha test uchun:
-    return [
-        {"id": GROUP_CHAT_ID, "name": "Asosiy guruh"},
-        # Qo'shimcha guruhlarni config'dan yoki Sheets'dan olish mumkin
-    ]
-
-
-async def get_bot_groups():
-    """Bot a'zo bo'lgan guruhlarni olish"""
-    return await asyncio.to_thread(get_bot_groups_sync)
+    await message.answer(preview, reply_markup=get_confirm_keyboard(), parse_mode="Markdown")
 
 
 @router.callback_query(F.data == "preview_message")
@@ -277,198 +220,116 @@ async def preview_callback(callback: CallbackQuery, state: FSMContext):
     elif msg["type"] == "photo":
         await callback.message.answer_photo(
             msg["content"], 
-            caption=f"📷 **Rasm**\n\n{msg['caption']}" if msg['caption'] else "📷 Rasm",
-            parse_mode="Markdown"
+            caption=f"📷 **Rasm**\n\n{msg['caption']}" if msg['caption'] else "📷 Rasm"
         )
     elif msg["type"] == "video":
         await callback.message.answer_video(
             msg["content"], 
-            caption=f"🎥 **Video**\n\n{msg['caption']}" if msg['caption'] else "🎥 Video",
-            parse_mode="Markdown"
+            caption=f"🎥 **Video**\n\n{msg['caption']}" if msg['caption'] else "🎥 Video"
         )
     elif msg["type"] == "document":
         await callback.message.answer_document(
             msg["content"], 
-            caption=f"📎 **Hujjat**\n\n{msg['caption']}" if msg['caption'] else "📎 Hujjat",
-            parse_mode="Markdown"
+            caption=f"📎 **Hujjat**\n\n{msg['caption']}" if msg['caption'] else "📎 Hujjat"
         )
     
     await callback.answer()
 
 
-@router.callback_query(F.data == "target_all_users")
-async def target_all_users(callback: CallbackQuery, state: FSMContext):
-    """Barcha userlarga yuborish"""
-    await state.update_data(target="all_users")
-    
+@router.callback_query(F.data == "send_to_group")
+async def send_to_group(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    """Faqat guruhga yuborish"""
     data = await state.get_data()
     msg = data.get("message_data")
-    total_users = await get_user_count()
-    
-    confirm_text = f"📢 **TASDIQLASH**\n\n"
-    confirm_text += f"✅ YUBORILADI:\n"
-    confirm_text += f"👥 {total_users} ta foydalanuvchiga\n\n"
-    confirm_text += f"📝 Xabar:\n```\n{msg['content'][:200] if msg['type'] == 'text' else msg['type']}\n```\n\n"
-    confirm_text += f"Yuborilsinmi?"
-    
-    await callback.message.edit_text(
-        confirm_text, 
-        reply_markup=get_confirm_keyboard(), 
-        parse_mode="Markdown"
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data == "target_groups")
-async def target_groups(callback: CallbackQuery, state: FSMContext):
-    """Guruhlarga yuborish"""
-    groups = await get_bot_groups()
-    
-    if not groups:
-        await callback.message.edit_text(
-            "❌ Hech qanday guruh topilmadi!\n\n"
-            "Bot guruhga qo'shilganligini tekshiring.",
-            reply_markup=get_target_keyboard()
-        )
-        await callback.answer()
-        return
-    
-    await state.update_data(target="groups")
-    
-    text = "👥 **GURUHLARNI TANLANG:**\n\n"
-    text += "Yubormoqchi bo'lgan guruhingizni tanlang:\n"
-    
-    await callback.message.edit_text(
-        text, 
-        reply_markup=get_group_keyboard(groups), 
-        parse_mode="Markdown"
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("group_"))
-async def select_group(callback: CallbackQuery, state: FSMContext):
-    """Guruhni tanlash"""
-    group_id = int(callback.data.split("_")[1])
-    await state.update_data(selected_group=group_id)
-    
-    data = await state.get_data()
-    msg = data.get("message_data")
-    
-    confirm_text = f"📢 **TASDIQLASH**\n\n"
-    confirm_text += f"✅ YUBORILADI:\n"
-    confirm_text += f"👥 Tanlangan guruhga\n\n"
-    confirm_text += f"📝 Xabar:\n```\n{msg['content'][:200] if msg['type'] == 'text' else msg['type']}\n```\n\n"
-    confirm_text += f"Yuborilsinmi?"
-    
-    await callback.message.edit_text(
-        confirm_text, 
-        reply_markup=get_confirm_keyboard(), 
-        parse_mode="Markdown"
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data == "back_to_target")
-async def back_to_target(callback: CallbackQuery, state: FSMContext):
-    """Qaytadan joy tanlash"""
-    data = await state.get_data()
-    msg = data.get("message_data")
-    total_users = await get_user_count()
-    groups = await get_bot_groups()
-    
-    text = "📍 **Qayerga yuboramiz?**\n\n"
-    text += f"👥 Botdagi userlar: {total_users}\n"
-    text += f"👥 Guruhlar: {len(groups)}\n\n"
-    text += "Tanlang:"
-    
-    await callback.message.edit_text(
-        text, 
-        reply_markup=get_target_keyboard(), 
-        parse_mode="Markdown"
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data == "confirm_send")
-async def confirm_send(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    """Xabarni yuborish"""
-    data = await state.get_data()
-    msg = data.get("message_data")
-    target = data.get("target")
-    selected_group = data.get("selected_group")
     
     if not msg:
         await callback.answer("Xabar topilmadi!", show_alert=True)
         return
     
-    await callback.message.edit_text("📤 Xabar yuborilmoqda...\n⏳ Bu biroz vaqt olishi mumkin...")
+    await callback.message.edit_text("📤 Guruhga yuborilmoqda...")
+    
+    try:
+        if msg["type"] == "text":
+            await bot.send_message(GROUP_CHAT_ID, msg["content"])
+        elif msg["type"] == "photo":
+            await bot.send_photo(GROUP_CHAT_ID, msg["content"], caption=msg.get("caption"))
+        elif msg["type"] == "video":
+            await bot.send_video(GROUP_CHAT_ID, msg["content"], caption=msg.get("caption"))
+        elif msg["type"] == "document":
+            await bot.send_document(GROUP_CHAT_ID, msg["content"], caption=msg.get("caption"))
+        
+        await state.clear()
+        
+        report = f"✅ **XABAR GURUHGA YUBORILDI!**\n\n"
+        report += f"📊 **HISOBOT:**\n"
+        report += f"👥 Guruh ID: `{GROUP_CHAT_ID}`\n"
+        report += f"✅ Holati: Muvaffaqiyatli\n\n"
+        report += f"📝 Xabar turi: {msg['type'].upper()}"
+        
+        await callback.message.edit_text(report, reply_markup=get_result_keyboard(), parse_mode="Markdown")
+    except Exception as e:
+        await callback.message.edit_text(f"❌ Xatolik: {e}")
+    
+    await callback.answer()
+
+
+@router.callback_query(F.data == "confirm_send")
+async def confirm_send(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    """Barcha userlarga yuborish"""
+    data = await state.get_data()
+    msg = data.get("message_data")
+    
+    if not msg:
+        await callback.answer("Xabar topilmadi!", show_alert=True)
+        return
+    
+    await callback.message.edit_text("📤 Barcha foydalanuvchilarga yuborilmoqda...\n⏳ Bu biroz vaqt olishi mumkin...")
+    
+    users = await get_all_users()
+    
+    if not users:
+        await callback.message.edit_text("❌ Hech qanday foydalanuvchi topilmadi!")
+        return
     
     success = 0
     fail = 0
     
-    if target == "all_users":
-        # Barcha userlarga yuborish
-        users = await get_all_users()
-        
-        for user in users:
-            try:
-                user_id = user.get("user_id")
-                if not user_id:
-                    continue
-                
-                await send_message_to_user(bot, user_id, msg)
-                success += 1
-                await asyncio.sleep(0.05)
-            except Exception as e:
-                fail += 1
-                logging.error(f"Yuborilmadi {user_id}: {e}")
-        
-        total = len(users)
-        
-    elif target == "groups" and selected_group:
-        # Guruhga yuborish
+    for user in users:
         try:
-            await send_message_to_user(bot, selected_group, msg)
-            success = 1
+            user_id = user.get("user_id")
+            if not user_id:
+                continue
+            
+            if msg["type"] == "text":
+                await bot.send_message(user_id, msg["content"])
+            elif msg["type"] == "photo":
+                await bot.send_photo(user_id, msg["content"], caption=msg.get("caption"))
+            elif msg["type"] == "video":
+                await bot.send_video(user_id, msg["content"], caption=msg.get("caption"))
+            elif msg["type"] == "document":
+                await bot.send_document(user_id, msg["content"], caption=msg.get("caption"))
+            
+            success += 1
+            await asyncio.sleep(0.05)
         except Exception as e:
-            fail = 1
-            logging.error(f"Guruhga yuborilmadi: {e}")
-        
-        total = 1
+            fail += 1
+            logging.error(f"Yuborilmadi {user.get('user_id')}: {e}")
     
     await state.clear()
     
-    # Hisobot
     report = f"✅ **XABAR YUBORISH YAKUNLANDI!**\n\n"
     report += f"📊 **HISOBOT:**\n"
     report += f"✅ Muvaffaqiyatli: {success}\n"
     report += f"❌ Muvaffaqiyatsiz: {fail}\n"
-    report += f"📊 Jami: {total}\n"
+    report += f"📊 Jami: {len(users)}\n"
     
-    if total > 0:
-        report += f"📈 Muvaffaqiyat darajasi: {success/total*100:.1f}%\n\n"
+    if len(users) > 0:
+        report += f"📈 Muvaffaqiyat darajasi: {success/len(users)*100:.1f}%\n\n"
     
-    report += f"📝 Xabar:\n```\n{msg['content'][:100] if msg['type'] == 'text' else msg['type']}\n```"
+    report += f"📝 Xabar turi: {msg['type'].upper()}"
     
-    await callback.message.edit_text(
-        report, 
-        reply_markup=get_result_keyboard(), 
-        parse_mode="Markdown"
-    )
+    await callback.message.edit_text(report, reply_markup=get_result_keyboard(), parse_mode="Markdown")
     await callback.answer()
-
-
-async def send_message_to_user(bot: Bot, chat_id: int, msg: dict):
-    """Xabarni yuborish"""
-    if msg["type"] == "text":
-        await bot.send_message(chat_id, msg["content"])
-    elif msg["type"] == "photo":
-        await bot.send_photo(chat_id, msg["content"], caption=msg.get("caption"))
-    elif msg["type"] == "video":
-        await bot.send_video(chat_id, msg["content"], caption=msg.get("caption"))
-    elif msg["type"] == "document":
-        await bot.send_document(chat_id, msg["content"], caption=msg.get("caption"))
 
 
 @router.callback_query(F.data == "cancel_broadcast")
@@ -490,6 +351,10 @@ async def new_broadcast(callback: CallbackQuery, state: FSMContext):
         parse_mode="Markdown"
     )
     await callback.answer()
+
+
+# ============ QOLGAN FUNKSIYALAR ============
+
 BOT_ID = None
 
 
@@ -509,11 +374,11 @@ def is_admin(user_id: int) -> bool:
 
 
 def admin_main_menu_kb() -> InlineKeyboardMarkup:
+    """Admin panel tugmalari (broadcast tugmasi YO'Q)"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📊 Tez hisobot", callback_data="admin:quick")],
             [InlineKeyboardButton(text="📅 Qo'lda vaqt tanlash", callback_data="admin:custom")],
-            #[InlineKeyboardButton(text="📈 Statistika", callback_data="admin:stats")],
         ]
     )
 
@@ -654,7 +519,6 @@ async def start_handler(message: Message, state: FSMContext):
 
     subscribed, status = await check_subscription(user.id)
 
-    # Foydalanuvchini sheets'ga yozib qo'yamiz (vaqtinchalik ism bilan)
     await upsert_user(
         user_id=user.id,
         full_name=user.full_name,
@@ -682,7 +546,6 @@ async def start_handler(message: Message, state: FSMContext):
         )
         return
 
-    # ADMIN: obuna bo'lgan admin darhol panelga o'tadi, ism so'ralmaydi
     if is_admin(user.id):
         await message.answer(
             f"✅ Assalomu alaykum, {user.full_name}!\n\n"
@@ -691,7 +554,6 @@ async def start_handler(message: Message, state: FSMContext):
         )
         return
 
-    # ODDIY FOYDALANUVCHI: har doim ism so'raymiz
     await state.set_state(RegisterState.waiting_for_fullname)
     await message.answer(
         "✅ Obuna tasdiqlandi!\n\n"
@@ -701,8 +563,6 @@ async def start_handler(message: Message, state: FSMContext):
     )
 
 
-
-    
 @router.message(RegisterState.waiting_for_fullname)
 async def register_fullname(message: Message, state: FSMContext):
     user = message.from_user
@@ -715,10 +575,7 @@ async def register_fullname(message: Message, state: FSMContext):
         return
 
     await update_user_fullname(user.id, full_name)
-
     await state.clear()
-
-    # Bu yerda admin bo'lishi mumkin emas, chunki adminlar bu state ga kirmaydi
     await message.answer(
         f"✅ Assalomu alaykum, {full_name}!\n\n"
         "Xush kelibsiz.\n"
@@ -761,7 +618,6 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
 
     await callback.answer("Obuna tasdiqlandi ✅")
 
-    # Admin uchun darhol panel
     if is_admin(user.id):
         await callback.message.edit_text(
             f"✅ Assalomu alaykum, {user.full_name}!\n\nAdmin panelga xush kelibsiz!",
@@ -769,7 +625,6 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
         )
         return
 
-    # Oddiy foydalanuvchi uchun ism so'rash
     existing = await get_user_fullname(user.id)
     if existing:
         await callback.message.edit_text("✅ Obuna tasdiqlandi! Botdan foydalanishingiz mumkin.")
@@ -819,19 +674,6 @@ async def quick_report_menu(callback: CallbackQuery):
         return
     await callback.message.edit_text("📊 Vaqt oralig'ini tanlang:", reply_markup=quick_report_kb())
     await callback.answer()
-
-
-@router.callback_query(F.data == "admin:stats")
-async def stats_menu(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("Siz admin emassiz", show_alert=True)
-        return
-    await callback.answer("Statistika tayyorlanmoqda...")
-    await callback.message.edit_text(
-        "📈 Statistika funksiyasi ishlab chiqilmoqda.\n"
-        "Hozircha hisobot olish uchun 'Tez hisobot' yoki 'Qo'lda vaqt tanlash' bo'limlaridan foydalaning.",
-        reply_markup=admin_main_menu_kb(),
-    )
 
 
 @router.callback_query(F.data == "admin:custom")
@@ -1049,7 +891,7 @@ async def calendar_handler(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
 
 
-# Manual time input handlers (text)
+# Manual time input handlers
 @router.message(AdminReportState.waiting_for_start_time)
 async def manual_time_input(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -1245,8 +1087,6 @@ async def private_message_router(message: Message, state: FSMContext):
             logging.exception("Adminga forward qilishda xato: %s", e)
     await message.answer("✅ Xabaringiz adminga yuborildi.")
 
-
-# bot.py faylining oxirgi qismi (taxminan 800-850 qatorlar)
 
 async def set_commands():
     """Bot uchun komandalar ro'yxatini o'rnatish"""
