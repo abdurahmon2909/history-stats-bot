@@ -15,7 +15,7 @@ from aiogram.types import (
 )
 
 from config import ADMIN_IDS, GROUP_CHAT_ID
-from sheets import get_all_users  # Faqat get_all_users import qilindi
+from sheets import get_all_users
 
 router = Router()
 
@@ -41,8 +41,14 @@ def confirm_broadcast_kb() -> InlineKeyboardMarkup:
     )
 
 
-async def start_broadcast(message: Message, state: FSMContext):
-    """Broadcast boshlash"""
+@router.message(Command("broadcast"))
+async def broadcast_command(message: Message, state: FSMContext):
+    """Adminlarga xabar yuborish imkoniyati"""
+    user_id = message.from_user.id
+    if user_id not in ADMIN_IDS:
+        await message.reply("❌ Bu buyruq faqat adminlar uchun!")
+        return
+    
     await state.set_state(BroadcastState.waiting_for_message)
     await message.answer(
         "📢 **ELON YUBORISH**\n\n"
@@ -114,24 +120,26 @@ async def get_broadcast_message(message: Message, state: FSMContext):
     preview_text += f"📍 **Yuboriladigan joy:** Barcha foydalanuvchilar\n\n"
     
     if message_data["type"] == "text":
-        preview_text += f"📝 Matn:\n\n`{message_data['text'][:500]}`"
+        preview_text += f"📝 Matn:\n\n"
+        preview_text += f"```\n{message_data['text'][:500]}\n```"
         if len(message_data['text']) > 500:
-            preview_text += "..."
+            preview_text += "\n...(davomi bor)"
     elif message_data["type"] == "photo":
-        preview_text += "🖼 Rasm\n"
+        preview_text += "🖼 Rasm yuboriladi\n"
         if message_data["caption"]:
-            preview_text += f"\n📝 Sarlavha: `{message_data['caption'][:200]}`"
+            preview_text += f"\n📝 Sarlavha:\n```\n{message_data['caption'][:200]}\n```"
     elif message_data["type"] == "video":
-        preview_text += "🎥 Video\n"
+        preview_text += "🎥 Video yuboriladi\n"
         if message_data["caption"]:
-            preview_text += f"\n📝 Sarlavha: `{message_data['caption'][:200]}`"
+            preview_text += f"\n📝 Sarlavha:\n```\n{message_data['caption'][:200]}\n```"
     elif message_data["type"] == "document":
-        preview_text += "📎 Hujjat\n"
+        preview_text += "📎 Hujjat yuboriladi\n"
         if message_data["caption"]:
-            preview_text += f"\n📝 Sarlavha: `{message_data['caption'][:200]}`"
+            preview_text += f"\n📝 Sarlavha:\n```\n{message_data['caption'][:200]}\n```"
     
     preview_text += f"\n\n✅ Xabar yuborilsinmi?"
     
+    # Tugmalar bilan birga xabar yuborish
     await message.answer(
         preview_text,
         reply_markup=confirm_broadcast_kb(),
@@ -158,7 +166,7 @@ async def preview_message(callback: CallbackQuery, state: FSMContext):
         # Xabarni oldindan ko'rish uchun yuborish
         if broadcast_message["type"] == "text":
             await callback.message.answer(
-                f"📋 **XABAR MATNI**\n\n{broadcast_message['text']}",
+                f"📋 **XABAR MATNI**\n\n```\n{broadcast_message['text']}\n```",
                 parse_mode="Markdown"
             )
         elif broadcast_message["type"] == "photo":
