@@ -826,7 +826,15 @@ async def main():
     global BOT_ID
     await set_commands()
     await init_sheets()
-    BOT_ID = (await bot.get_me()).id  # Bot ID sini olish
+    
+    # Bot ID ni olish
+    bot_info = await bot.get_me()
+    BOT_ID = bot_info.id
+    
+    # group_events.py dagi botni yangilash
+    from group_events import bot as group_bot
+    group_bot.bot = bot  # Bot obyektini ulash
+    
     await start_background_flush()
     logging.info(f"Bot ishga tushdi. Bot ID: {BOT_ID}")
     logging.info("Google Sheets ga ulanildi")
@@ -834,7 +842,6 @@ async def main():
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         await stop_background_flush()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
