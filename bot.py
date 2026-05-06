@@ -70,8 +70,8 @@ def get_confirm_keyboard():
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="✅ HA, BARCHAGA YUBORISH", callback_data="confirm_send"),
-                InlineKeyboardButton(text="👥 FAQAT GURUHGA", callback_data="send_to_group"),
+                InlineKeyboardButton(text="✅ BOT ORQALI YUBORISH", callback_data="confirm_send"),
+                InlineKeyboardButton(text="👥 FAQAT GURUHGA YUBORISH", callback_data="send_to_group"),
             ],
             [
                 InlineKeyboardButton(text="📋 XABARNI QAYTA KO'RISH", callback_data="preview_message"),
