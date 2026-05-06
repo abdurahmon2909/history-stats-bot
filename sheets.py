@@ -44,10 +44,9 @@ FLUSH_INTERVAL_SECONDS = 3
 MAX_BUFFER_SIZE = 25
 
 # Statistikadan chiqarib tashlanadigan userlar
-EXCLUDED_USER_IDS = frozenset({159312129})  # set o'rniga frozenset (tezroq)
-
-# Pagination uchun sozlamalar
-PAGE_SIZE = 5000  # Har bir so'rovda olinadigan qatorlar soni
+EXCLUDED_USER_IDS = {
+    159312129,  # Fazliddin Burxonov
+}
 
 
 def _connect_sync():
@@ -297,7 +296,7 @@ async def get_user_fullname(user_id: int) -> str | None:
 
 
 def _get_user_fullname_sync(user_id: int) -> str | None:
-    global USER_DATA_CACHE
+    global USER_DATA_CACHE, USER_ROW_CACHE
     
     # Avval cache dan tekshiramiz
     if user_id in USER_DATA_CACHE:
@@ -314,13 +313,14 @@ def _get_user_fullname_sync(user_id: int) -> str | None:
             if len(row) > 1 and row[1]:
                 full_name = row[1]
                 # Cacheni yangilaymiz
+                USER_ROW_CACHE[user_id] = cell.row
                 if user_id in USER_DATA_CACHE:
                     USER_DATA_CACHE[user_id]["full_name"] = full_name
                 else:
                     USER_DATA_CACHE[user_id] = {"full_name": full_name}
                 return full_name
-    except Exception:
-        pass
+    except Exception as e:
+        logging.error(f"User fullname olishda xato: {e}")
     
     return None
 
@@ -415,259 +415,171 @@ def classify_activity(share_percent: float) -> str:
     return "Qoniqarli"
 
 
-# ============ OPTIMALLASHTIRILGAN FUNKSIYALAR ============
+async def get_stats_for_hours(chat_id: int, hours: int) -> dict[str, Any]:
+    await flush_message_buffer()
+    return await asyncio.to_thread(_get_stats_for_hours_sync, chat_id, hours)
 
-def _get_messages_with_pagination_sync() -> list[dict[str, Any]]:
-    """
-    Barcha xabarlarni pagination yordamida xotiraga samarali yuklaydi.
-    Har bir sahifada PAGE_SIZE ta qator olinadi.
-    """
+
+def _get_stats_for_hours_sync(chat_id: int, hours: int) -> dict[str, Any]:
     ws = _get_ws_sync(WS_MESSAGES)
-    
-    # Birinchi qator (sarlavhalar) ni olish
-    headers = _retry_sync(ws.row_values, 1)
-    if not headers:
-        return []
-    
-    # Qatorlar sonini aniqlash
-    all_rows = []
-    current_row = 2  # Sarlavhadan keyin boshlaymiz
-    
-    while True:
-        try:
-            # Bir vaqtning o'zida PAGE_SIZE ta qator olish
-            end_row = current_row + PAGE_SIZE - 1
-            range_name = f"A{current_row}:G{end_row}"
-            batch = _retry_sync(ws.get, range_name, major_dimension="ROWS")
-            
-            if not batch or not batch[0]:
-                break
-            
-            # Har bir qatorni dict formatiga o'tkazish
-            for row in batch:
-                if not row or len(row) < 7:
-                    continue
-                
-                row_dict = {}
-                for idx, header in enumerate(headers):
-                    if idx < len(row):
-                        row_dict[header] = row[idx]
-                    else:
-                        row_dict[header] = ""
-                all_rows.append(row_dict)
-            
-            # Agar olingan qatorlar PAGE_SIZE dan kam bo'lsa, bu oxirgi sahifa
-            if len(batch) < PAGE_SIZE:
-                break
-            
-            current_row += PAGE_SIZE
-            
-        except Exception as e:
-            # Xatolik yuz bersa, to'xtatamiz
-            break
-    
-    return all_rows
+    rows = _retry_sync(ws.get_all_records)
 
+    now = datetime.now(timezone.utc)
+    start_dt = now - timedelta(hours=hours)
 
-def _filter_messages_by_time_sync(
-    rows: list[dict[str, Any]], 
-    start_dt: datetime, 
-    end_dt: datetime,
-    chat_id: int
-) -> list[dict[str, Any]]:
-    """
-    Xabarlarni vaqt oralig'i va chat_id bo'yicha filtrlaydi.
-    Xotirani tejash uchun generator ishlatiladi.
-    """
     filtered = []
-    
-    start_dt_tz = start_dt.astimezone(TASHKENT_TZ) if start_dt.tzinfo else start_dt.replace(tzinfo=TASHKENT_TZ)
-    end_dt_tz = end_dt.astimezone(TASHKENT_TZ) if end_dt.tzinfo else end_dt.replace(tzinfo=TASHKENT_TZ)
-    
     for row in rows:
         try:
-            # chat_id ni tekshirish
-            row_chat_id = int(str(row.get("chat_id", "0")).strip())
-            if row_chat_id != chat_id:
+            if int(str(row.get("chat_id", "0")).strip()) != int(chat_id):
                 continue
-            
-            # user_id ni tekshirish
+
             user_id = int(str(row.get("user_id", "0")).strip())
             if user_id in EXCLUDED_USER_IDS:
                 continue
-            
-            # Vaqtni tekshirish
+
             sent_at_raw = str(row.get("sent_at", "")).strip()
             if not sent_at_raw:
                 continue
-            
+
             sent_at = datetime.fromisoformat(sent_at_raw)
             if sent_at.tzinfo is None:
                 sent_at = sent_at.replace(tzinfo=TASHKENT_TZ)
-            
-            if sent_at < start_dt_tz or sent_at > end_dt_tz:
+
+            if sent_at < start_dt.replace(tzinfo=TASHKENT_TZ):
                 continue
-            
+
             filtered.append(row)
-            
         except Exception:
             continue
-    
-    return filtered
 
-
-def _get_stats_for_range_optimized_sync(
-    chat_id: int, 
-    start_dt: datetime, 
-    end_dt: datetime
-) -> dict[str, Any]:
-    """
-    Optimallashtirilgan statistik funksiya - barcha ma'lumotlarni bir vaqtda xotiraga yuklamaydi.
-    Pagination va filtrlashni bosqichma-bosqich bajaradi.
-    """
-    ws = _get_ws_sync(WS_MESSAGES)
-    
-    # Sarlavhalarni olish
-    headers = _retry_sync(ws.row_values, 1)
-    if not headers:
-        return {
-            "start_dt": start_dt,
-            "end_dt": end_dt,
-            "total_messages": 0,
-            "users": [],
-        }
-    
-    start_dt_tz = start_dt.astimezone(TASHKENT_TZ) if start_dt.tzinfo else start_dt.replace(tzinfo=TASHKENT_TZ)
-    end_dt_tz = end_dt.astimezone(TASHKENT_TZ) if end_dt.tzinfo else end_dt.replace(tzinfo=TASHKENT_TZ)
-    
+    total_messages = len(filtered)
     per_user: dict[int, dict[str, Any]] = {}
-    total_messages = 0
-    
-    # Pagination bilan qatorlarni o'qish
-    current_row = 2  # Sarlavhadan keyin boshlaymiz
-    
-    while True:
+
+    for row in filtered:
         try:
-            # Bir vaqtning o'zida PAGE_SIZE ta qator olish
-            end_row = current_row + PAGE_SIZE - 1
-            range_name = f"A{current_row}:G{end_row}"
-            batch = _retry_sync(ws.get, range_name, major_dimension="ROWS")
+            user_id = int(str(row.get("user_id", "0")).strip())
+            if user_id in EXCLUDED_USER_IDS:
+                continue
+        except Exception:
+            continue
+
+        # Xabardagi full_name dan foydalanamiz (yoki user cache dan)
+        full_name = str(row.get("full_name", "")).strip() or "Noma'lum"
+        username = str(row.get("username", "")).strip()
+
+        if user_id not in per_user:
+            # Userning to'liq ismini cache dan olishga harakat qilamiz
+            cached_name = _get_user_fullname_sync(user_id)
+            if cached_name:
+                full_name = cached_name
             
-            if not batch or not batch[0]:
-                break
-            
-            batch_filtered_count = 0
-            
-            # Har bir qatorni qayta ishlash
-            for row in batch:
-                if not row or len(row) < 7:
-                    continue
-                
-                try:
-                    # chat_id ni tekshirish
-                    row_chat_id = int(str(row[0]).strip())
-                    if row_chat_id != chat_id:
-                        continue
-                    
-                    # user_id ni tekshirish
-                    user_id = int(str(row[2]).strip())
-                    if user_id in EXCLUDED_USER_IDS:
-                        continue
-                    
-                    # Vaqtni tekshirish
-                    sent_at_raw = str(row[6]).strip()
-                    if not sent_at_raw:
-                        continue
-                    
-                    sent_at = datetime.fromisoformat(sent_at_raw)
-                    if sent_at.tzinfo is None:
-                        sent_at = sent_at.replace(tzinfo=TASHKENT_TZ)
-                    
-                    if sent_at < start_dt_tz or sent_at > end_dt_tz:
-                        continue
-                    
-                    # Statistikani hisoblash
-                    batch_filtered_count += 1
-                    full_name = str(row[3]).strip() or "Noma'lum"
-                    username = str(row[4]).strip()
-                    
-                    # Userning to'liq ismini cache dan olishga harakat qilamiz
-                    cached_name = _get_user_fullname_sync(user_id)
-                    if cached_name:
-                        full_name = cached_name
-                    
-                    if user_id not in per_user:
-                        per_user[user_id] = {
-                            "user_id": user_id,
-                            "full_name": full_name,
-                            "username": username,
-                            "msg_count": 0,
-                        }
-                    
-                    per_user[user_id]["msg_count"] += 1
-                    
-                except Exception:
-                    continue
-            
-            total_messages += batch_filtered_count
-            
-            # Agar olingan qatorlar PAGE_SIZE dan kam bo'lsa, bu oxirgi sahifa
-            if len(batch) < PAGE_SIZE:
-                break
-            
-            current_row += PAGE_SIZE
-            
-        except Exception as e:
-            # Xatolik yuz bersa, to'xtatamiz
-            break
-    
-    # Natijalarni formatlash
+            per_user[user_id] = {
+                "user_id": user_id,
+                "full_name": full_name,
+                "username": username,
+                "msg_count": 0,
+            }
+
+        per_user[user_id]["msg_count"] += 1
+
     result = []
     for item in per_user.values():
         share = (item["msg_count"] / total_messages * 100) if total_messages else 0.0
         item["share_percent"] = round(share, 2)
         item["category"] = classify_activity(share)
         result.append(item)
-    
+
     result.sort(key=lambda x: (-x["msg_count"], x["full_name"].lower()))
-    
+
+    return {
+        "start_dt": start_dt,
+        "end_dt": now,
+        "total_messages": total_messages,
+        "users": result,
+    }
+
+
+async def get_stats_for_range(chat_id: int, start_dt: datetime, end_dt: datetime) -> dict[str, Any]:
+    """Berilgan vaqt oralig'idagi statistikani qaytaradi"""
+    await flush_message_buffer()
+    return await asyncio.to_thread(_get_stats_for_range_sync, chat_id, start_dt, end_dt)
+
+
+def _get_stats_for_range_sync(chat_id: int, start_dt: datetime, end_dt: datetime) -> dict[str, Any]:
+    ws = _get_ws_sync(WS_MESSAGES)
+    rows = _retry_sync(ws.get_all_records)
+
+    filtered = []
+    for row in rows:
+        try:
+            if int(str(row.get("chat_id", "0")).strip()) != int(chat_id):
+                continue
+
+            user_id = int(str(row.get("user_id", "0")).strip())
+            if user_id in EXCLUDED_USER_IDS:
+                continue
+
+            sent_at_raw = str(row.get("sent_at", "")).strip()
+            if not sent_at_raw:
+                continue
+
+            sent_at = datetime.fromisoformat(sent_at_raw)
+            if sent_at.tzinfo is None:
+                sent_at = sent_at.replace(tzinfo=TASHKENT_TZ)
+
+            # Vaqt oralig'ini tekshirish
+            start_dt_tz = start_dt.astimezone(TASHKENT_TZ) if start_dt.tzinfo else start_dt.replace(tzinfo=TASHKENT_TZ)
+            end_dt_tz = end_dt.astimezone(TASHKENT_TZ) if end_dt.tzinfo else end_dt.replace(tzinfo=TASHKENT_TZ)
+
+            if sent_at < start_dt_tz or sent_at > end_dt_tz:
+                continue
+
+            filtered.append(row)
+        except Exception:
+            continue
+
+    total_messages = len(filtered)
+    per_user: dict[int, dict[str, Any]] = {}
+
+    for row in filtered:
+        try:
+            user_id = int(str(row.get("user_id", "0")).strip())
+            if user_id in EXCLUDED_USER_IDS:
+                continue
+        except Exception:
+            continue
+
+        # Xabardagi full_name dan foydalanamiz (yoki user cache dan)
+        full_name = str(row.get("full_name", "")).strip() or "Noma'lum"
+        username = str(row.get("username", "")).strip()
+
+        if user_id not in per_user:
+            # Userning to'liq ismini cache dan olishga harakat qilamiz
+            cached_name = _get_user_fullname_sync(user_id)
+            if cached_name:
+                full_name = cached_name
+            
+            per_user[user_id] = {
+                "user_id": user_id,
+                "full_name": full_name,
+                "username": username,
+                "msg_count": 0,
+            }
+
+        per_user[user_id]["msg_count"] += 1
+
+    result = []
+    for item in per_user.values():
+        share = (item["msg_count"] / total_messages * 100) if total_messages else 0.0
+        item["share_percent"] = round(share, 2)
+        item["category"] = classify_activity(share)
+        result.append(item)
+
+    result.sort(key=lambda x: (-x["msg_count"], x["full_name"].lower()))
+
     return {
         "start_dt": start_dt,
         "end_dt": end_dt,
         "total_messages": total_messages,
         "users": result,
     }
-
-
-async def get_stats_for_hours(chat_id: int, hours: int) -> dict[str, Any]:
-    """So'nggi soatlar uchun statistikani qaytaradi"""
-    await flush_message_buffer()
-    
-    now = datetime.now(timezone.utc)
-    start_dt = now - timedelta(hours=hours)
-    
-    return await asyncio.to_thread(
-        _get_stats_for_range_optimized_sync, 
-        chat_id, 
-        start_dt, 
-        now
-    )
-
-
-async def get_stats_for_range(chat_id: int, start_dt: datetime, end_dt: datetime) -> dict[str, Any]:
-    """Berilgan vaqt oralig'idagi statistikani qaytaradi"""
-    await flush_message_buffer()
-    return await asyncio.to_thread(
-        _get_stats_for_range_optimized_sync, 
-        chat_id, 
-        start_dt, 
-        end_dt
-    )
-
-
-# Eski funksiyalarni moslik uchun saqlab qo'yamiz (lekin optimallashtirilgan versiyani ishlatish tavsiya etiladi)
-def _get_stats_for_hours_sync(chat_id: int, hours: int) -> dict[str, Any]:
-    """Eski versiya - moslik uchun saqlangan"""
-    now = datetime.now(timezone.utc)
-    start_dt = now - timedelta(hours=hours)
-    return _get_stats_for_range_optimized_sync(chat_id, start_dt, now)
