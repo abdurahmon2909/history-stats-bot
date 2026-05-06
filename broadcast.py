@@ -15,7 +15,7 @@ from aiogram.types import (
 )
 
 from config import ADMIN_IDS, GROUP_CHAT_ID
-from sheets import get_all_users, get_user_language  # Yangi funksiyalar qo'shiladi
+from sheets import get_all_users  # Faqat get_all_users import qilindi
 
 router = Router()
 
@@ -296,7 +296,7 @@ async def confirm_broadcast_to_all(callback: CallbackQuery, state: FSMContext, b
             
             success_count += 1
             
-            # Rate limitga rioya qilish
+            # Rate limitga rioya qilish (sekundiga 20 ta xabar)
             await asyncio.sleep(0.05)
             
         except Exception as e:
