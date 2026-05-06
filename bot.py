@@ -270,6 +270,17 @@ async def start_handler(message: Message, state: FSMContext):
     )
 
 
+# bot.py ga qo'shing (router = Router() dan keyin)
+
+@router.message(Command("broadcast"))
+async def test_broadcast(message: Message):
+    """To'g'ridan-to'g'ri bot.py dagi broadcast"""
+    user_id = message.from_user.id
+    if user_id not in ADMIN_IDS:
+        await message.reply("❌ Faqat adminlar!")
+        return
+    await message.answer("✅ TEST: Broadcast ishlayapti!")
+    logging.info(f"Test broadcast ishledi: {user_id}")
     
 @router.message(RegisterState.waiting_for_fullname)
 async def register_fullname(message: Message, state: FSMContext):
