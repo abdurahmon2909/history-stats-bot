@@ -195,15 +195,14 @@ def _upsert_user_sync(
 
     if row_num:
         cached = USER_DATA_CACHE.get(user_id, {})
-
         current_sub = cached.get("is_subscribed", "0")
         first_seen = cached.get("first_seen", now) or now
         new_sub = str(is_subscribed) if is_subscribed is not None else current_sub
-
-        # Agar full_name bo'sh bo'lsa, eski nomni saqlaymiz
+        
+        # MUHIM: Agar yangi full_name bo'sh bo'lsa, eski nomni saqlaymiz
         if not full_name or full_name.strip() == "":
             full_name = cached.get("full_name", "")
-
+        
         values = [[
             str(user_id),
             full_name,
@@ -213,11 +212,7 @@ def _upsert_user_sync(
             now,
         ]]
 
-        _retry_sync(
-            ws.update,
-            range_name=f"A{row_num}:F{row_num}",
-            values=values
-        )
+        _retry_sync(ws.update, range_name=f"A{row_num}:F{row_num}", values=values)
 
         USER_DATA_CACHE[user_id] = {
             "full_name": full_name,
@@ -226,13 +221,13 @@ def _upsert_user_sync(
             "first_seen": first_seen,
             "last_seen": now,
         }
-        if full_name:
+        if full_name and full_name.strip():
             USER_FULLNAME_CACHE[user_id] = (full_name, time.time())
 
     else:
         values = [
             str(user_id),
-            full_name,
+            full_name,  # Bu bo'sh ham bo'lishi mumkin
             username or "",
             str(is_subscribed or 0),
             now,
@@ -250,9 +245,8 @@ def _upsert_user_sync(
             "first_seen": now,
             "last_seen": now,
         }
-        if full_name:
+        if full_name and full_name.strip():
             USER_FULLNAME_CACHE[user_id] = (full_name, time.time())
-
 
 def _update_user_fullname_sync(user_id: int, new_full_name: str):
     """Foydalanuvchining to'liq ismini yangilaydi"""
