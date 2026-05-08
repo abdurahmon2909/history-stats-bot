@@ -445,8 +445,8 @@ def cancel_report_kb() -> InlineKeyboardMarkup:
 def join_channel_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Kanalga o'tish", url=CHANNEL_LINK)],
-            [InlineKeyboardButton(text="Qayta tekshirish", callback_data="check_sub")],
+            [InlineKeyboardButton(text="Kanalga o'tish➡️", url=CHANNEL_LINK)],
+            [InlineKeyboardButton(text="Tekshirish✅", callback_data="check_sub")],
         ]
     )
 
