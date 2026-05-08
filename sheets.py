@@ -302,26 +302,23 @@ async def update_user_fullname(user_id: int, full_name: str):
     await asyncio.to_thread(_update_user_fullname_sync, user_id, full_name)
 
 
-async def get_user_fullname(user_id: int) -> str | None:
-    """Foydalanuvchining to'liq ismini qaytaradi"""
-    return await asyncio.to_thread(_get_user_fullname_sync, user_id)
-
-
 def _get_user_fullname_sync(user_id: int) -> str | None:
+    """Foydalanuvchining to'liq ismini qaytaradi - faqat Google Sheets'dan"""
     global USER_DATA_CACHE, USER_ROW_CACHE, USER_FULLNAME_CACHE
 
     # Avval TTL cache dan tekshiramiz
     if user_id in USER_FULLNAME_CACHE:
         full_name, timestamp = USER_FULLNAME_CACHE[user_id]
         if time.time() - timestamp < CACHE_TTL:
-            return full_name
+            return full_name if full_name else None  # ✅ Bo'sh string bo'lsa None qaytar
 
     # Keyin oddiy cache dan tekshiramiz
     if user_id in USER_DATA_CACHE:
         full_name = USER_DATA_CACHE[user_id].get("full_name", "")
-        if full_name and full_name.strip() != "":
+        if full_name and full_name.strip():
             USER_FULLNAME_CACHE[user_id] = (full_name, time.time())
             return full_name
+        return None  # ✅ Bo'sh bo'lsa None qaytar
 
     # Cache da bo'lmasa, Google Sheets'dan o'qiymiz
     try:
@@ -329,7 +326,7 @@ def _get_user_fullname_sync(user_id: int) -> str | None:
         cell = ws.find(str(user_id), in_column=1)
         if cell:
             row = ws.row_values(cell.row)
-            if len(row) > 1 and row[1]:
+            if len(row) > 1 and row[1] and row[1].strip():
                 full_name = row[1]
                 USER_ROW_CACHE[user_id] = cell.row
                 if user_id in USER_DATA_CACHE:
@@ -341,7 +338,7 @@ def _get_user_fullname_sync(user_id: int) -> str | None:
     except Exception as e:
         logging.error(f"User fullname olishda xato (user_id={user_id}): {e}")
 
-    return None
+    return None  # ✅ Ism topilmasa None
 
 
 async def append_group_message(
