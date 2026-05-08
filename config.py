@@ -7,18 +7,31 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
 
-# Eski - faqat bitta guruh
-# GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0").strip())
+# ESKI VERSIYA BILAN HAM ISHLASH UCHUN (backward compatibility)
+GROUP_CHAT_IDS_STR = os.getenv("GROUP_CHAT_IDS", "")
+GROUP_CHAT_ID_OLD = os.getenv("GROUP_CHAT_ID", "")
 
-# Yangi - bir nechta guruhlarni qo'llab-quvvatlash
-GROUP_CHAT_IDS = [
-    int(x.strip()) 
-    for x in os.getenv("GROUP_CHAT_IDS", "").split(",") 
-    if x.strip().isdigit()
-]
+if GROUP_CHAT_IDS_STR:
+    # Yangi versiya: bir nechta guruh
+    GROUP_CHAT_IDS = [
+        int(x.strip()) 
+        for x in GROUP_CHAT_IDS_STR.split(",") 
+        if x.strip().isdigit()
+    ]
+elif GROUP_CHAT_ID_OLD:
+    # Eski versiya: bitta guruh
+    GROUP_CHAT_IDS = [int(GROUP_CHAT_ID_OLD.strip())]
+else:
+    GROUP_CHAT_IDS = []
 
-# Asosiy guruh (agar kerak bo'lsa)
+# Asosiy guruh (birinchi guruh yoki eski guruh)
 MAIN_GROUP_CHAT_ID = GROUP_CHAT_IDS[0] if GROUP_CHAT_IDS else 0
+
+# Guruh nomlari (ixtiyoriy)
+GROUP_NAMES = {}
+for group_id in GROUP_CHAT_IDS:
+    group_name = os.getenv(f"GROUP_NAME_{abs(group_id)}", f"Guruh {GROUP_CHAT_IDS.index(group_id) + 1}")
+    GROUP_NAMES[group_id] = group_name
 
 CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0").strip())
 CHANNEL_LINK = os.getenv("CHANNEL_LINK", "").strip()
@@ -32,11 +45,19 @@ ADMIN_IDS = [
 SHEET_ID = os.getenv("SHEET_ID", "").strip()
 GOOGLE_CREDS_RAW = os.getenv("GOOGLE_CREDS", "").strip()
 
+# Validatsiya
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN topilmadi")
 
 if not GROUP_CHAT_IDS:
-    raise ValueError("GROUP_CHAT_IDS topilmadi (kamida bitta guruh ID kerak)")
+    # Aniq xatolik va yechim
+    print("=" * 50)
+    print("XATOLIK: GROUP_CHAT_IDS yoki GROUP_CHAT_ID topilmadi!")
+    print("Iltimos, .env fayliga quyidagilardan birini qo'shing:")
+    print("1. GROUP_CHAT_IDS=-1001234567890,-1009876543210  (bir nechta guruh)")
+    print("2. GROUP_CHAT_ID=-1001234567890  (bitta guruh)")
+    print("=" * 50)
+    raise ValueError("GROUP_CHAT_IDS topilmadi (kamida bitta guruh ID kerak). .env faylini tekshiring!")
 
 if not CHANNEL_ID:
     raise ValueError("CHANNEL_ID topilmadi")
@@ -58,8 +79,7 @@ try:
 except json.JSONDecodeError as e:
     raise ValueError(f"GOOGLE_CREDS noto'g'ri JSON: {e}")
 
-# Guruh nomlari (ixtiyoriy)
-GROUP_NAMES = {
-    group_id: os.getenv(f"GROUP_NAME_{abs(group_id)}", f"Guruh {idx+1}")
-    for idx, group_id in enumerate(GROUP_CHAT_IDS)
-}
+# Logging uchun
+print(f"Yuklangan guruhlar: {len(GROUP_CHAT_IDS)} ta")
+for gid in GROUP_CHAT_IDS:
+    print(f"  - {GROUP_NAMES[gid]}: {gid}")
