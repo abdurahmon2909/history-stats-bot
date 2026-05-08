@@ -412,67 +412,6 @@ def groups_selection_kb(prefix: str = "group") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def quick_report_with_group_kb() -> InlineKeyboardMarkup:
-    """Tez hisobot uchun vaqt va guruh tanlash"""
-    keyboard = []
-    
-    # Vaqt tanlash
-    keyboard.append([InlineKeyboardButton(text="📊 VAQT TANLASH", callback_data="ignore")])
-    keyboard.extend([
-        [
-            InlineKeyboardButton(text="2 soat", callback_data="quick:2"),
-            InlineKeyboardButton(text="4 soat", callback_data="quick:4"),
-            InlineKeyboardButton(text="8 soat", callback_data="quick:8"),
-        ],
-        [
-            InlineKeyboardButton(text="1 kun", callback_data="quick:24"),
-            InlineKeyboardButton(text="3 kun", callback_data="quick:72"),
-            InlineKeyboardButton(text="1 hafta", callback_data="quick:168"),
-        ],
-        [
-            InlineKeyboardButton(text="1 oy", callback_data="quick:720"),
-        ],
-    ])
-    
-    # Guruh tanlash
-    keyboard.append([InlineKeyboardButton(text="🏢 GURUH TANLASH", callback_data="ignore")])
-    for group_id in GROUP_CHAT_IDS:
-        group_name = GROUP_NAMES.get(group_id, f"Guruh {group_id}")
-        keyboard.append([
-            InlineKeyboardButton(
-                text=f"📢 {group_name}", 
-                callback_data=f"quick_group:{group_id}"
-            )
-        ])
-    
-    keyboard.append([InlineKeyboardButton(text="🔙 Ortga", callback_data="admin:back_to_main")])
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-
-def quick_time_selection_kb(group_id: int) -> InlineKeyboardMarkup:
-    """Tanlangan guruh uchun vaqt tanlash tugmalari"""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="2 soat", callback_data=f"quick_final:{group_id}:2"),
-                InlineKeyboardButton(text="4 soat", callback_data=f"quick_final:{group_id}:4"),
-                InlineKeyboardButton(text="8 soat", callback_data=f"quick_final:{group_id}:8"),
-            ],
-            [
-                InlineKeyboardButton(text="1 kun", callback_data=f"quick_final:{group_id}:24"),
-                InlineKeyboardButton(text="3 kun", callback_data=f"quick_final:{group_id}:72"),
-                InlineKeyboardButton(text="1 hafta", callback_data=f"quick_final:{group_id}:168"),
-            ],
-            [
-                InlineKeyboardButton(text="1 oy", callback_data=f"quick_final:{group_id}:720"),
-            ],
-            [
-                InlineKeyboardButton(text="🔙 Ortga", callback_data="admin:quick"),
-            ],
-        ]
-    )
-
-
 def time_select_kb() -> InlineKeyboardMarkup:
     keyboard = []
     for i in range(0, 24, 4):
