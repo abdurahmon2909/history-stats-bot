@@ -558,7 +558,7 @@ async def start_handler(message: Message, state: FSMContext):
     await message.answer(
         "✅ Obuna tasdiqlandi!\n\n"
         "Iltimos, to'liq ismingiz va familiyangizni kiriting:\n"
-        "Masalan: Alisher Navoiy\n\n"
+        "Masalan: Murodjonov Asilbek\n\n"
         "Bu ma'lumot hisobotlarda ko'rsatiladi."
     )
 
