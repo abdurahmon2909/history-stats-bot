@@ -1,3 +1,5 @@
+# ============ pdf_report.py (TO'LIQ YANGILANGAN) ============
+
 from __future__ import annotations
 
 import os
@@ -38,14 +40,12 @@ def classify_activity_by_percentile(users: list) -> list:
     if not users:
         return users
     
-    # Xabarlar soni bo'yicha saralash (kamayish tartibida)
     sorted_users = sorted(users, key=lambda x: x["msg_count"], reverse=True)
     total_users = len(sorted_users)
     
-    # Foydalanuvchilar sonining foizlariga qarab chegaralarni hisoblash
-    faol_limit = max(1, int(total_users * 0.1))  # Yuqori 10% (kamida 1 ta)
-    yaxshi_limit = faol_limit + max(1, int(total_users * 0.2))  # Keyingi 20%
-    ortacha_limit = yaxshi_limit + max(1, int(total_users * 0.3))  # Keyingi 30%
+    faol_limit = max(1, int(total_users * 0.1))
+    yaxshi_limit = faol_limit + max(1, int(total_users * 0.2))
+    ortacha_limit = yaxshi_limit + max(1, int(total_users * 0.3))
     
     for idx, user in enumerate(sorted_users):
         if idx < faol_limit:
@@ -106,6 +106,17 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         leading=22,
         spaceAfter=8,
     )
+    
+    style_group_title = ParagraphStyle(
+        "GroupTitle",
+        parent=styles["Title"],
+        alignment=TA_CENTER,
+        fontName="Helvetica-Bold",
+        fontSize=16,
+        textColor=colors.HexColor("#1a5490"),
+        leading=20,
+        spaceAfter=6,
+    )
 
     style_info = ParagraphStyle(
         "Info",
@@ -158,8 +169,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         img.preserveAspectRatio = True
         img.hAlign = "CENTER"
         
-        # Logo balandligini avtomatik moslash (maksimal 120mm)
-        max_height = 120 * mm  # 85mm dan 120mm ga oshirildi
+        max_height = 120 * mm
         if img.drawHeight > max_height:
             img.drawHeight = max_height
         
@@ -180,6 +190,22 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         )
     )
 
+    # ===== GURUH NOMI =====
+    group_name = stats.get('group_name', 'Guruh')
+    group_id = stats.get('group_id', '')
+    
+    story.append(
+        Paragraph(
+            f"🏢 {group_name}",
+            style_group_title,
+        )
+    )
+    
+    if group_id:
+        story.append(
+            Paragraph(f"Guruh ID: <b>{group_id}</b>", style_info),
+        )
+
     # ===== ASOSIY SARLAVHA =====
     story.append(
         Paragraph(
@@ -193,7 +219,6 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
     total_messages = stats["total_messages"]
     users = stats["users"]
 
-    # Foydalanuvchilar sonining foizlariga qarab kategoriyalarni belgilash
     users = classify_activity_by_percentile(users)
 
     story.append(Paragraph(f"Boshlanish vaqti: <b>{start_text}</b>", style_info))
@@ -215,7 +240,6 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         if cat in category_counts:
             category_counts[cat] += 1
 
-    # Kategoriya foizlarini hisoblash
     total_users = len(users)
     faol_percent = (category_counts["Faol"] / total_users * 100) if total_users else 0
     yaxshi_percent = (category_counts["Yaxshi"] / total_users * 100) if total_users else 0
@@ -253,7 +277,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
     story.append(summary_table)
     story.append(Spacer(1, 10))
 
-    # ===== TOP 3 (ranglar bilan) =====
+    # ===== TOP 3 =====
     if users:
         top3 = users[:3]
         top3_rows = [[
@@ -276,7 +300,6 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
 
         top3_table = Table(top3_rows, colWidths=[18 * mm, 90 * mm, 28 * mm, 28 * mm, 32 * mm])
         
-        # TOP 3 jadvaliga ranglar qo'shish (Batafsil jadvaldagi kabi)
         top3_style = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#123b5d")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -286,7 +309,6 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
             ("FONTSIZE", (0, 0), (-1, -1), 9),
         ]
         
-        # Har bir qatorga kategoriyasiga qarab rang berish
         for row_idx, u in enumerate(top3, start=1):
             cat = u["category"]
             if cat == "Faol":
@@ -343,7 +365,6 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]
 
-    # Toifa ustuniga rang berish (5-ustun, indeks 4)
     for row_idx, user in enumerate(users, start=1):
         cat = user["category"]
         if cat == "Faol":
