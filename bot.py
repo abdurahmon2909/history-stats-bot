@@ -114,7 +114,7 @@ async def broadcast_start(message: Message, state: FSMContext):
         "• 🎥 Video - video + caption\n"
         "• 📎 Hujjat - fayl + caption\n\n"
         "❌ Bekor qilish: /cancel",
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
 
@@ -212,7 +212,7 @@ async def show_preview(message: Message, state: FSMContext):
     
     preview += "\n\n📍 **Qayerga yuboramiz?**"
     
-    await message.answer(preview, reply_markup=get_confirm_keyboard(), parse_mode="Markdown")
+    await message.answer(preview, reply_markup=get_confirm_keyboard(), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "preview_message")
@@ -228,7 +228,7 @@ async def preview_callback(callback: CallbackQuery, state: FSMContext):
     if msg["type"] == "text":
         await callback.message.answer(
             f"📋 **XABAR MATNI:**\n\n```\n{msg['content']}\n```",
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
     elif msg["type"] == "photo":
         await callback.message.answer_photo(
@@ -279,7 +279,7 @@ async def send_to_group(callback: CallbackQuery, state: FSMContext, bot: Bot):
         report += f"✅ Holati: Muvaffaqiyatli\n\n"
         report += f"📝 Xabar turi: {msg['type'].upper()}"
         
-        await callback.message.edit_text(report, reply_markup=get_result_keyboard(), parse_mode="Markdown")
+        await callback.message.edit_text(report, reply_markup=get_result_keyboard(), parse_mode="HTML")
     except Exception as e:
         await callback.message.edit_text(f"❌ Xatolik: {e}")
     
@@ -341,7 +341,7 @@ async def confirm_send(callback: CallbackQuery, state: FSMContext, bot: Bot):
     
     report += f"📝 Xabar turi: {msg['type'].upper()}"
     
-    await callback.message.edit_text(report, reply_markup=get_result_keyboard(), parse_mode="Markdown")
+    await callback.message.edit_text(report, reply_markup=get_result_keyboard(), parse_mode="HTML")
     await callback.answer()
 
 
@@ -361,7 +361,7 @@ async def new_broadcast(callback: CallbackQuery, state: FSMContext):
         "📢 **YANGI XABAR KIRITING**\n\n"
         "Yubormoqchi bo'lgan xabaringizni yozing yoki yuboring:\n\n"
         "❌ Bekor qilish: /cancel",
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
     await callback.answer()
 
@@ -550,7 +550,7 @@ async def start_handler(message: Message, state: FSMContext):
                 "🔽 **Admin panel:** /admin\n"
                 "📢 **Xabar yuborish:** /broadcast\n"
                 "✏️ **Ism o'zgartirish:** /editname",
-                parse_mode="Markdown",
+                parse_mode="HTML",
                 reply_markup=admin_main_menu_kb()
             )
         else:
@@ -560,7 +560,7 @@ async def start_handler(message: Message, state: FSMContext):
                 "📝 Botdan foydalanishingiz mumkin.\n"
                 "💬 Xabarlaringiz adminlarga yetkaziladi.\n\n"
                 "✏️ Ismingizni o'zgartirish uchun: /editname",
-                parse_mode="Markdown"
+                parse_mode="HTML"
             )
     else:
         # Ismi yo'q - ism familiya so'raymiz
@@ -571,7 +571,7 @@ async def start_handler(message: Message, state: FSMContext):
             "Masalan: Murodjonov Asilbek\n\n"
             "⚠️ Bu ma'lumot faqat bir marta so'raladi va hisobotlarda ko'rsatiladi.\n\n"
             "❌ Bekor qilish: /cancel",
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
 
 @router.callback_query(F.data == "check_sub")
@@ -625,7 +625,7 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
                 "📋 Siz admin sifatida tizimga kirdingiz.\n\n"
                 "🔽 **Admin panel:** /admin\n"
                 "📢 **Xabar yuborish:** /broadcast",
-                parse_mode="Markdown",
+                parse_mode="HTML",
                 reply_markup=admin_main_menu_kb()
             )
         else:
@@ -634,7 +634,7 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
                 "🎉 Xush kelibsiz!\n\n"
                 "📝 Botdan foydalanishingiz mumkin.\n"
                 "💬 Xabarlaringiz adminlarga yetkaziladi.",
-                parse_mode="Markdown"
+                parse_mode="HTML"
             )
     else:
         # Ismi yo'q - ism familiya so'raymiz
@@ -646,7 +646,7 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
             "Masalan: Murodjonov Asilbek\n\n"
             "⚠️ Bu ma'lumot faqat bir marta so'raladi va hisobotlarda ko'rsatiladi.\n\n"
             "❌ Bekor qilish: /cancel",
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
 
 @router.message(RegisterState.waiting_for_fullname)
@@ -686,7 +686,7 @@ async def register_fullname(message: Message, state: FSMContext):
             "🔽 **Admin panel:** /admin\n"
             "📢 **Xabar yuborish:** /broadcast\n"
             "✏️ **Ism o'zgartirish:** /editname",
-            parse_mode="Markdown",
+            parse_mode="HTML",
             reply_markup=admin_main_menu_kb()
         )
     else:
@@ -696,7 +696,7 @@ async def register_fullname(message: Message, state: FSMContext):
             "📝 Endi siz bot orqali adminlarga xabar yuborishingiz mumkin.\n"
             "💬 Xabarlaringiz adminlarga yetkaziladi va ular sizga javob berishi mumkin.\n\n"
             "✏️ Ismingizni o'zgartirish uchun: /editname",
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
 
 @router.message(Command("editname"))
@@ -731,7 +731,7 @@ async def edit_fullname(message: Message, state: FSMContext):
         "Yangi to'liq ismingiz va familiyangizni kiriting:\n"
         "Masalan: Murodjonov Asilbek\n\n"
         "❌ Bekor qilish: /cancel",
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
 
@@ -791,7 +791,7 @@ async def quick_report_menu(callback: CallbackQuery):
         "📊 **TEZ HISOBOT**\n\n"
         "⚠️ **Avval guruhni tanlang:**\n\n"
         "👇 Quyidagi tugmalardan birini bosing:",
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
     )
     await callback.answer("Guruh tanlang", show_alert=False)
@@ -860,7 +860,7 @@ async def quick_select_time(callback: CallbackQuery, state: FSMContext):  # stat
             f"✅ **Tanlangan guruh:** {group_name}\n\n"
             "⏰ **Endi vaqt oralig'ini tanlang:**\n\n"
             "👇 Quyidagi tugmalardan birini bosing:",
-            parse_mode="Markdown",
+            parse_mode="HTML",
             reply_markup=keyboard
         )
         print("DEBUG: Xabar muvaffaqiyatli yangilandi")
@@ -870,7 +870,7 @@ async def quick_select_time(callback: CallbackQuery, state: FSMContext):  # stat
             f"✅ **Tanlangan guruh:** {group_name}\n\n"
             "⏰ **Endi vaqt oralig'ini tanlang:**\n\n"
             "👇 Quyidagi tugmalardan birini bosing:",
-            parse_mode="Markdown",
+            parse_mode="HTML",
             reply_markup=keyboard
         )
     
@@ -912,7 +912,7 @@ async def quick_report_final(callback: CallbackQuery):
         f"🏢 **Guruh:** {group_name}\n"
         f"⏰ **Vaqt oralig'i:** So'nggi {hours} soat\n\n"
         f"⏳ Iltimos, kuting...",
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
     
     # Statistikani olish
@@ -948,7 +948,7 @@ async def quick_report_final(callback: CallbackQuery):
         )
         
         # PDF ni yuborish
-        await callback.message.answer(short_text, parse_mode="Markdown")
+        await callback.message.answer(short_text, parse_mode="HTML")
         await callback.message.answer_document(
             FSInputFile(filename),
             caption=f"📊 {group_name} - So'nggi {period_label} hisoboti",
@@ -995,7 +995,7 @@ async def custom_report_start(callback: CallbackQuery, state: FSMContext):
         "📅 **QO'LDA VAQT BILAN HISOBOT**\n\n"
         "⚠️ **Avval guruhni tanlang:**\n\n"
         "👇 Quyidagi tugmalardan birini bosing:",
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
     )
     await callback.answer()
@@ -1019,7 +1019,7 @@ async def custom_report_group_selected(callback: CallbackQuery, state: FSMContex
     await callback.message.edit_text(
         f"✅ **Tanlangan guruh:** {group_name}\n\n"
         "📅 **Endi BOSHLANG'ICH SANANI tanlang:**",
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=create_calendar_kb(now.year, now.month)
     )
     await callback.answer()
@@ -1139,7 +1139,7 @@ async def select_minute(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(
             f"✅ Boshlang'ich vaqt: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n\n"
             "📅 **TUGASH SANASINI tanlang:**",
-            parse_mode="Markdown",
+            parse_mode="HTML",
             reply_markup=create_calendar_kb(start_date.year, start_date.month)
         )
     elif current_state == AdminReportState.waiting_for_end_time:
@@ -1166,7 +1166,7 @@ async def select_minute(callback: CallbackQuery, state: FSMContext):
             f"🏢 Guruh: {group_name}\n"
             f"📅 Boshlanish: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n"
             f"📅 Tugash: {end_datetime.strftime('%Y-%m-%d %H:%M')}",
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
         
         stats = await get_stats_for_range(selected_group_id, start_datetime, end_datetime)
@@ -1188,7 +1188,7 @@ async def select_minute(callback: CallbackQuery, state: FSMContext):
             f"👤 **Faol foydalanuvchilar:** {len(stats['users'])}"
         )
         
-        await callback.message.answer(short_text, parse_mode="Markdown")
+        await callback.message.answer(short_text, parse_mode="HTML")
         await callback.message.answer_document(
             FSInputFile(filename),
             caption=f"📊 {group_name} - {period_label} hisoboti",
@@ -1233,7 +1233,7 @@ async def calendar_handler(callback: CallbackQuery, state: FSMContext):
             await callback.message.edit_text(
                 f"✅ Boshlang'ich sana: {selected_date.strftime('%Y-%m-%d')}\n\n"
                 "⏰ **BOSHLANG'ICH SOATNI tanlang:**",
-                parse_mode="Markdown",
+                parse_mode="HTML",
                 reply_markup=time_select_kb()
             )
         elif current_state == AdminReportState.waiting_for_end_date:
@@ -1250,7 +1250,7 @@ async def calendar_handler(callback: CallbackQuery, state: FSMContext):
                 f"✅ Boshlang'ich sana: {start_date.strftime('%Y-%m-%d')}\n"
                 f"✅ Tugash sanasi: {selected_date.strftime('%Y-%m-%d')}\n\n"
                 "⏰ **TUGASH SOATINI tanlang:**",
-                parse_mode="Markdown",
+                parse_mode="HTML",
                 reply_markup=time_select_kb()
             )
         await callback.answer()
@@ -1352,7 +1352,7 @@ async def manual_end_time_input(message: Message, state: FSMContext):
             f"👤 **Faol foydalanuvchilar:** {len(stats['users'])}"
         )
         
-        await message.answer(short_text, parse_mode="Markdown")
+        await message.answer(short_text, parse_mode="HTML")
         await message.answer_document(
             FSInputFile(filename),
             caption=f"📊 {group_name} - {period_label} hisoboti",
