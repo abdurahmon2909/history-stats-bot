@@ -620,17 +620,17 @@ def _has_user_fullname_sync(user_id: int) -> bool:
     """Foydalanuvchining ismi mavjudligini synchronously tekshiradi"""
     global USER_DATA_CACHE, USER_FULLNAME_CACHE
     
-    # Avval cache dan tekshiramiz
-    if user_id in USER_FULLNAME_CACHE:
-        full_name, _ = USER_FULLNAME_CACHE[user_id]
-        return bool(full_name and full_name.strip())
-    
-    if user_id in USER_DATA_CACHE:
-        full_name = USER_DATA_CACHE[user_id].get("full_name", "")
-        return bool(full_name and full_name.strip())
-    
-    # Cache da bo'lmasa, Google Sheets'dan o'qiymiz
     try:
+        # Avval cache dan tekshiramiz
+        if user_id in USER_FULLNAME_CACHE:
+            full_name, _ = USER_FULLNAME_CACHE[user_id]
+            return bool(full_name and full_name.strip())
+        
+        if user_id in USER_DATA_CACHE:
+            full_name = USER_DATA_CACHE[user_id].get("full_name", "")
+            return bool(full_name and full_name.strip())
+        
+        # Cache da bo'lmasa, Google Sheets'dan o'qiymiz
         ws = _get_ws_sync(WS_USERS)
         cell = ws.find(str(user_id), in_column=1)
         if cell:
