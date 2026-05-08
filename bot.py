@@ -1385,8 +1385,10 @@ async def group_message_tracker(message: Message):
     
     text = message.text or message.caption or ""
     full_name = await get_user_fullname(message.from_user.id)
+    
+    # ✅ TUZATILDI: Agar ism bo'lmasa, "Ism kiritilmagan" deb yozamiz
     if not full_name:
-        full_name = message.from_user.full_name
+        full_name = "Ism kiritilmagan"  # Telegram ismini ishlatmaymiz
     
     await append_group_message(
         chat_id=message.chat.id,
@@ -1409,7 +1411,15 @@ async def private_message_router(message: Message, state: FSMContext):
     if message.text and message.text.startswith("/"):
         return
     subscribed, status = await check_subscription(user.id)
-    await upsert_user(user.id, user.full_name, user.username, 1 if subscribed else 0)
+    
+    # ✅ TUZATILDI: Telegramdan ism olmaymiz, faqat bo'sh string yuboramiz
+    await upsert_user(
+        user_id=user.id,
+        full_name="",  # BO'SH - telegramdan ism olmaymiz
+        username=user.username,
+        is_subscribed=1 if subscribed else 0,
+    )
+    
     if status == "inaccessible":
         await message.answer(
             "Hozircha kanal obunasini avtomatik tekshirib bo'lmadi.\n"
