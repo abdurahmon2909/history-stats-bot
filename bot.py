@@ -41,6 +41,7 @@ from sheets import (
     append_group_message,
     get_stats_for_range,
     get_stats_for_hours,
+    has_user_fullname,
     get_user_fullname,
     start_background_flush,
     stop_background_flush,
