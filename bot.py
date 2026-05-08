@@ -738,7 +738,7 @@ async def quick_report_menu(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("quick_select_group:"))
-async def quick_select_time(callback: CallbackQuery):
+async def quick_select_time(callback: CallbackQuery, state: FSMContext):  # state parametrini qo'shing!
     """Guruh tanlangandan keyin vaqt tanlash"""
     print(f"DEBUG: quick_select_group callback ishga tushdi: {callback.data}")
     
@@ -749,7 +749,6 @@ async def quick_select_time(callback: CallbackQuery):
     
     # Callback data ni parse qilish
     try:
-        # Format: "quick_select_group:group_id"
         parts = callback.data.split(":")
         print(f"DEBUG: Parts = {parts}")
         
@@ -769,8 +768,8 @@ async def quick_select_time(callback: CallbackQuery):
     group_name = GROUP_NAMES.get(group_id, f"Guruh {group_id}")
     print(f"DEBUG: Group name = {group_name}")
     
-    # Tanlangan guruhni saqlash
-    await callback.state.update_data(selected_group_id=group_id)
+    # Tanlangan guruhni saqlash - ENDI state ishlaydi!
+    await state.update_data(selected_group_id=group_id)
     
     # Vaqt tanlash tugmalari
     keyboard = InlineKeyboardMarkup(
@@ -816,7 +815,6 @@ async def quick_select_time(callback: CallbackQuery):
         )
     
     await callback.answer(f"{group_name} tanlandi", show_alert=False)
-
 
 @router.callback_query(F.data.startswith("quick_final:"))
 async def quick_report_final(callback: CallbackQuery):
