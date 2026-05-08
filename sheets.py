@@ -615,7 +615,43 @@ async def get_all_users() -> list[dict[str, Any]]:
     """Barcha foydalanuvchilarni qaytaradi"""
     return await asyncio.to_thread(_get_all_users_sync)
 
+# sheets.py fayliga qo'shing
 
+async def has_user_fullname(user_id: int) -> bool:
+    """Foydalanuvchining ismi mavjudligini tekshiradi"""
+    return await asyncio.to_thread(_has_user_fullname_sync, user_id)
+
+
+def _has_user_fullname_sync(user_id: int) -> bool:
+    """Foydalanuvchining ismi mavjudligini synchronously tekshiradi"""
+    global USER_DATA_CACHE, USER_FULLNAME_CACHE
+    
+    # Avval cache dan tekshiramiz
+    if user_id in USER_FULLNAME_CACHE:
+        full_name, _ = USER_FULLNAME_CACHE[user_id]
+        return bool(full_name and full_name.strip())
+    
+    if user_id in USER_DATA_CACHE:
+        full_name = USER_DATA_CACHE[user_id].get("full_name", "")
+        return bool(full_name and full_name.strip())
+    
+    # Cache da bo'lmasa, Google Sheets'dan o'qiymiz
+    try:
+        ws = _get_ws_sync(WS_USERS)
+        cell = ws.find(str(user_id), in_column=1)
+        if cell:
+            row = ws.row_values(cell.row)
+            if len(row) > 1 and row[1] and row[1].strip():
+                full_name = row[1]
+                USER_ROW_CACHE[user_id] = cell.row
+                USER_DATA_CACHE[user_id] = {"full_name": full_name}
+                USER_FULLNAME_CACHE[user_id] = (full_name, time.time())
+                return True
+    except Exception as e:
+        logging.error(f"User fullname tekshirishda xato (user_id={user_id}): {e}")
+    
+    return False
+    
 def _get_all_users_sync() -> list[dict[str, Any]]:
     """Barcha foydalanuvchilarni synchronously qaytaradi"""
     try:
