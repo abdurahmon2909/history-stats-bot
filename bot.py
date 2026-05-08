@@ -1,3 +1,5 @@
+# ============ bot.py (TO'LIQ YANGILANGAN) ============
+
 from __future__ import annotations
 
 import asyncio
@@ -25,7 +27,9 @@ from aiogram.types import (
 
 from config import (
     BOT_TOKEN,
-    GROUP_CHAT_ID,
+    GROUP_CHAT_IDS,
+    GROUP_NAMES,
+    MAIN_GROUP_CHAT_ID,
     CHANNEL_ID,
     CHANNEL_LINK,
     ADMIN_IDS,
@@ -59,7 +63,7 @@ router = Router()
 dp.include_router(router)
 dp.include_router(group_events_router)
 
-# ============ BROADCAST FUNKSIYASI (TO'LIQ INLINE TUGMALI) ============
+# ============ BROADCAST FUNKSIYASI ============
 
 class BroadcastState(StatesGroup):
     waiting_for_message = State()
@@ -140,7 +144,6 @@ async def get_broadcast_message(message: Message, state: FSMContext):
         await state.clear()
         return
     
-    # Xabarni turiga qarab saqlash
     if message.text:
         msg_data = {
             "type": "text", 
@@ -170,8 +173,6 @@ async def get_broadcast_message(message: Message, state: FSMContext):
         return
     
     await state.update_data(message_data=msg_data)
-    
-    # Preview ko'rsatish
     await show_preview(message, state)
 
 
@@ -206,7 +207,7 @@ async def show_preview(message: Message, state: FSMContext):
     preview += "\n\n📊 **Ma'lumot:**\n"
     total_users = await get_user_count()
     preview += f"👥 Botdagi userlar soni: {total_users}\n"
-    preview += f"👥 Guruh ID: `{GROUP_CHAT_ID}`"
+    preview += f"👥 Guruhlar soni: {len(GROUP_CHAT_IDS)}"
     
     preview += "\n\n📍 **Qayerga yuboramiz?**"
     
@@ -249,7 +250,7 @@ async def preview_callback(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "send_to_group")
 async def send_to_group(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    """Faqat guruhga yuborish"""
+    """Faqat asosiy guruhga yuborish"""
     data = await state.get_data()
     msg = data.get("message_data")
     
@@ -261,19 +262,19 @@ async def send_to_group(callback: CallbackQuery, state: FSMContext, bot: Bot):
     
     try:
         if msg["type"] == "text":
-            await bot.send_message(GROUP_CHAT_ID, msg["content"])
+            await bot.send_message(MAIN_GROUP_CHAT_ID, msg["content"])
         elif msg["type"] == "photo":
-            await bot.send_photo(GROUP_CHAT_ID, msg["content"], caption=msg.get("caption"))
+            await bot.send_photo(MAIN_GROUP_CHAT_ID, msg["content"], caption=msg.get("caption"))
         elif msg["type"] == "video":
-            await bot.send_video(GROUP_CHAT_ID, msg["content"], caption=msg.get("caption"))
+            await bot.send_video(MAIN_GROUP_CHAT_ID, msg["content"], caption=msg.get("caption"))
         elif msg["type"] == "document":
-            await bot.send_document(GROUP_CHAT_ID, msg["content"], caption=msg.get("caption"))
+            await bot.send_document(MAIN_GROUP_CHAT_ID, msg["content"], caption=msg.get("caption"))
         
         await state.clear()
         
         report = f"✅ **XABAR GURUHGA YUBORILDI!**\n\n"
         report += f"📊 **HISOBOT:**\n"
-        report += f"👥 Guruh ID: `{GROUP_CHAT_ID}`\n"
+        report += f"👥 Guruh ID: `{MAIN_GROUP_CHAT_ID}`\n"
         report += f"✅ Holati: Muvaffaqiyatli\n\n"
         report += f"📝 Xabar turi: {msg['type'].upper()}"
         
@@ -364,7 +365,7 @@ async def new_broadcast(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# ============ QOLGAN FUNKSIYALAR ============
+# ============ ASOSIY FUNKSIYALAR ============
 
 BOT_ID = None
 
@@ -394,24 +395,79 @@ def admin_main_menu_kb() -> InlineKeyboardMarkup:
     )
 
 
-def quick_report_kb() -> InlineKeyboardMarkup:
+def groups_selection_kb(prefix: str = "group") -> InlineKeyboardMarkup:
+    """Guruh tanlash tugmalari"""
+    keyboard = []
+    
+    for group_id in GROUP_CHAT_IDS:
+        group_name = GROUP_NAMES.get(group_id, f"Guruh {group_id}")
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"📢 {group_name}", 
+                callback_data=f"{prefix}:{group_id}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton(text="🔙 Ortga", callback_data="admin:back_to_main")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def quick_report_with_group_kb() -> InlineKeyboardMarkup:
+    """Tez hisobot uchun vaqt va guruh tanlash"""
+    keyboard = []
+    
+    # Vaqt tanlash
+    keyboard.append([InlineKeyboardButton(text="📊 VAQT TANLASH", callback_data="ignore")])
+    keyboard.extend([
+        [
+            InlineKeyboardButton(text="2 soat", callback_data="quick:2"),
+            InlineKeyboardButton(text="4 soat", callback_data="quick:4"),
+            InlineKeyboardButton(text="8 soat", callback_data="quick:8"),
+        ],
+        [
+            InlineKeyboardButton(text="1 kun", callback_data="quick:24"),
+            InlineKeyboardButton(text="3 kun", callback_data="quick:72"),
+            InlineKeyboardButton(text="1 hafta", callback_data="quick:168"),
+        ],
+        [
+            InlineKeyboardButton(text="1 oy", callback_data="quick:720"),
+        ],
+    ])
+    
+    # Guruh tanlash
+    keyboard.append([InlineKeyboardButton(text="🏢 GURUH TANLASH", callback_data="ignore")])
+    for group_id in GROUP_CHAT_IDS:
+        group_name = GROUP_NAMES.get(group_id, f"Guruh {group_id}")
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"📢 {group_name}", 
+                callback_data=f"quick_group:{group_id}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton(text="🔙 Ortga", callback_data="admin:back_to_main")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def quick_time_selection_kb(group_id: int) -> InlineKeyboardMarkup:
+    """Tanlangan guruh uchun vaqt tanlash tugmalari"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="2 soat", callback_data="quick:2"),
-                InlineKeyboardButton(text="4 soat", callback_data="quick:4"),
-                InlineKeyboardButton(text="8 soat", callback_data="quick:8"),
+                InlineKeyboardButton(text="2 soat", callback_data=f"quick_final:{group_id}:2"),
+                InlineKeyboardButton(text="4 soat", callback_data=f"quick_final:{group_id}:4"),
+                InlineKeyboardButton(text="8 soat", callback_data=f"quick_final:{group_id}:8"),
             ],
             [
-                InlineKeyboardButton(text="1 kun", callback_data="quick:24"),
-                InlineKeyboardButton(text="3 kun", callback_data="quick:72"),
-                InlineKeyboardButton(text="1 hafta", callback_data="quick:168"),
+                InlineKeyboardButton(text="1 kun", callback_data=f"quick_final:{group_id}:24"),
+                InlineKeyboardButton(text="3 kun", callback_data=f"quick_final:{group_id}:72"),
+                InlineKeyboardButton(text="1 hafta", callback_data=f"quick_final:{group_id}:168"),
             ],
             [
-                InlineKeyboardButton(text="1 oy", callback_data="quick:720"),
+                InlineKeyboardButton(text="1 oy", callback_data=f"quick_final:{group_id}:720"),
             ],
             [
-                InlineKeyboardButton(text="🔙 Ortga", callback_data="admin:back_to_main"),
+                InlineKeyboardButton(text="🔙 Ortga", callback_data="admin:quick"),
             ],
         ]
     )
@@ -557,7 +613,6 @@ async def start_handler(message: Message, state: FSMContext):
         )
         return
 
-    # ✅ HAMMA UCHUN (admin va oddiy foydalanuvchi) ism familiya so'raladi
     await state.set_state(RegisterState.waiting_for_fullname)
     await message.answer(
         "✅ **Obuna tasdiqlandi!**\n\n"
@@ -604,11 +659,8 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
 
     await callback.answer("Obuna tasdiqlandi ✅")
 
-    # ✅ HAMMA UCHUN (admin bo'lsa ham) ism familiya so'raladi
-    # Hech qanday existing tekshiruvi YO'Q
     await state.set_state(RegisterState.waiting_for_fullname)
     
-    # Xabarni yangilash o'rniga yangi xabar yuboramiz
     await callback.message.delete()
     await callback.message.answer(
         "✅ **Obuna tasdiqlandi!**\n\n"
@@ -628,7 +680,6 @@ async def register_fullname(message: Message, state: FSMContext):
 
     full_name = message.text.strip()
     
-    # Validatsiya
     if len(full_name) < 3:
         await message.answer(
             "❌ Ism va familiya kamida 3 harfdan iborat bo'lishi kerak.\n"
@@ -636,7 +687,6 @@ async def register_fullname(message: Message, state: FSMContext):
         )
         return
     
-    # Faqat harflar, bo'sh joy va tire ruxsat etiladi
     if not all(c.isalpha() or c.isspace() or c == '-' for c in full_name):
         await message.answer(
             "❌ Ism va familiya faqat harflar, bo'sh joy va ('-') dan iborat bo'lishi kerak.\n"
@@ -645,11 +695,9 @@ async def register_fullname(message: Message, state: FSMContext):
         )
         return
     
-    # 🔄 HAR DOIM yangilaymiz (mavjud bo'lsa ham)
     await update_user_fullname(user.id, full_name)
     await state.clear()
     
-    # Admin yoki oddiy foydalanuvchi ekanligini tekshirish
     if is_admin(user.id):
         await message.answer(
             f"✅ **Assalomu alaykum, {full_name}!**\n\n"
@@ -677,7 +725,6 @@ async def edit_fullname(message: Message, state: FSMContext):
     if not user:
         return
     
-    # Obuna tekshiruvi
     subscribed, status = await check_subscription(user.id)
     if status == "inaccessible":
         await message.answer(
@@ -736,28 +783,151 @@ async def cancel_report(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "admin:quick")
 async def quick_report_menu(callback: CallbackQuery):
+    """Tez hisobot menyusi - vaqt va guruh tanlash"""
     if not is_admin(callback.from_user.id):
         await callback.answer("Siz admin emassiz", show_alert=True)
         return
-    await callback.message.edit_text("📊 Vaqt oralig'ini tanlang:", reply_markup=quick_report_kb())
+    
+    await callback.message.edit_text(
+        "📊 **HISOBOT TURLARI**\n\n"
+        "1️⃣ Avval **vaqt oralig'ini** tanlang\n"
+        "2️⃣ Keyin **guruhni** tanlang\n\n"
+        "👇 Quyidagi tugmalardan birini bosing:",
+        parse_mode="Markdown",
+        reply_markup=quick_report_with_group_kb()
+    )
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("quick_group:"))
+async def quick_report_group_selection(callback: CallbackQuery):
+    """Guruh tanlash va hisobot tayyorlash"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Siz admin emassiz", show_alert=True)
+        return
+    
+    parts = callback.data.split(":")
+    if len(parts) != 2:
+        await callback.answer("Xatolik!", show_alert=True)
+        return
+    
+    try:
+        selected_group_id = int(parts[1])
+    except ValueError:
+        await callback.answer("Noto'g'ri guruh ID!", show_alert=True)
+        return
+    
+    await callback.message.edit_text(
+        f"✅ Tanlangan guruh: **{GROUP_NAMES.get(selected_group_id, selected_group_id)}**\n\n"
+        "⏰ Vaqt oralig'ini tanlang:",
+        parse_mode="Markdown",
+        reply_markup=quick_time_selection_kb(selected_group_id)
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("quick_final:"))
+async def quick_report_final(callback: CallbackQuery):
+    """Yakuniy hisobot tayyorlash"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Siz admin emassiz", show_alert=True)
+        return
+    
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        await callback.answer("Xatolik!", show_alert=True)
+        return
+    
+    try:
+        group_id = int(parts[1])
+        hours = int(parts[2])
+    except ValueError:
+        await callback.answer("Noto'g'ri ma'lumot!", show_alert=True)
+        return
+    
+    group_name = GROUP_NAMES.get(group_id, f"Guruh {group_id}")
+    await callback.answer(f"📊 Hisobot tayyorlanmoqda: {group_name}...")
+    
+    stats = await get_stats_for_hours(group_id, hours)
+    
+    labels = {
+        2: "2 soat",
+        4: "4 soat",
+        8: "8 soat",
+        24: "1 kun",
+        72: "3 kun",
+        168: "1 hafta",
+        720: "1 oy",
+    }
+    period_label = labels.get(hours, f"{hours} soat")
+    
+    os.makedirs("reports", exist_ok=True)
+    filename = f"reports/report_{group_name}_{hours}h_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    
+    stats['group_name'] = group_name
+    stats['group_id'] = group_id
+    
+    await asyncio.to_thread(build_pdf_report, stats, period_label, filename)
+    
+    short_text = (
+        f"🎯 **Hisobot tayyor!**\n\n"
+        f"🏢 **Guruh:** {group_name}\n"
+        f"📊 **Vaqt oralig'i:** So'nggi {period_label}\n"
+        f"💬 **Jami xabarlar:** {stats['total_messages']}\n"
+        f"👤 **Faol foydalanuvchilar:** {len(stats['users'])}\n\n"
+        f"📎 PDF hisobot yuklab olish uchun tayyor."
+    )
+    
+    await callback.message.answer(short_text, parse_mode="Markdown")
+    await callback.message.answer_document(
+        FSInputFile(filename),
+        caption=f"📊 {group_name} - So'nggi {period_label} hisoboti",
+    )
+    await callback.message.answer(
+        "👋 Admin panelga xush kelibsiz!",
+        reply_markup=admin_main_menu_kb(),
+    )
 
 
 @router.callback_query(F.data == "admin:custom")
 async def custom_report_start(callback: CallbackQuery, state: FSMContext):
+    """Qo'lda vaqt tanlash - avval guruh tanlash"""
     if not is_admin(callback.from_user.id):
         await callback.answer("Siz admin emassiz", show_alert=True)
         return
-    await state.set_state(AdminReportState.waiting_for_start_date)
-    now = datetime.now()
+    
     await callback.message.edit_text(
-        "📅 BOSHLANG'ICH SANANI tanlang:",
+        "📅 **HISOBOT YARATISH**\n\n"
+        "Avval hisobot olish kerak bo'lgan **GURUHNI TANLANG**:",
+        parse_mode="Markdown",
+        reply_markup=groups_selection_kb("custom_group")
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("custom_group:"))
+async def custom_report_group_selected(callback: CallbackQuery, state: FSMContext):
+    """Guruh tanlangandan keyin sana tanlash"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Siz admin emassiz", show_alert=True)
+        return
+    
+    group_id = int(callback.data.split(":")[1])
+    await state.update_data(selected_group_id=group_id)
+    await state.set_state(AdminReportState.waiting_for_start_date)
+    
+    group_name = GROUP_NAMES.get(group_id, f"Guruh {group_id}")
+    now = datetime.now()
+    
+    await callback.message.edit_text(
+        f"✅ Tanlangan guruh: **{group_name}**\n\n"
+        "📅 **BOSHLANG'ICH SANANI tanlang:**",
+        parse_mode="Markdown",
         reply_markup=create_calendar_kb(now.year, now.month)
     )
     await callback.answer()
 
 
-# Time handlers
 @router.callback_query(F.data == "time:manual_hour")
 async def manual_hour_input(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -854,12 +1024,15 @@ async def select_minute(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         await callback.answer("Siz admin emassiz", show_alert=True)
         return
+    
     parts = callback.data.split(":")
     hour = int(parts[2])
     minute = int(parts[3])
     selected_time = datetime.now().replace(hour=hour, minute=minute, second=0, microsecond=0)
     await state.update_data(selected_time=selected_time)
+    
     current_state = await state.get_state()
+    
     if current_state == AdminReportState.waiting_for_start_time:
         data = await state.get_data()
         start_date = data.get("start_date")
@@ -868,54 +1041,79 @@ async def select_minute(callback: CallbackQuery, state: FSMContext):
         await state.set_state(AdminReportState.waiting_for_end_date)
         await callback.message.edit_text(
             f"✅ Boshlang'ich vaqt: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n\n"
-            "📅 TUGASH SANASINI tanlang:",
+            "📅 **TUGASH SANASINI tanlang:**",
+            parse_mode="Markdown",
             reply_markup=create_calendar_kb(start_date.year, start_date.month)
         )
     elif current_state == AdminReportState.waiting_for_end_time:
         data = await state.get_data()
         end_date = data.get("end_date")
         start_datetime = data.get("start_datetime")
+        selected_group_id = data.get("selected_group_id")
+        
+        if not selected_group_id:
+            await callback.answer("Xatolik: Guruh tanlanmagan!", show_alert=True)
+            return
+        
         end_datetime = datetime.combine(end_date, selected_time.time())
+        
         if end_datetime < start_datetime:
             await callback.answer("❌ Tugash vaqti boshlang'ich vaqtdan oldin bo'lishi mumkin emas!", show_alert=True)
             return
+        
+        group_name = GROUP_NAMES.get(selected_group_id, f"Guruh {selected_group_id}")
+        
         await state.clear()
         await callback.message.edit_text(
-            f"📊 Hisobot tayyorlanmoqda...\n\n"
+            f"📊 **Hisobot tayyorlanmoqda...**\n\n"
+            f"🏢 Guruh: {group_name}\n"
             f"📅 Boshlanish: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n"
-            f"📅 Tugash: {end_datetime.strftime('%Y-%m-%d %H:%M')}"
+            f"📅 Tugash: {end_datetime.strftime('%Y-%m-%d %H:%M')}",
+            parse_mode="Markdown"
         )
-        stats = await get_stats_for_range(GROUP_CHAT_ID, start_datetime, end_datetime)
+        
+        stats = await get_stats_for_range(selected_group_id, start_datetime, end_datetime)
         period_label = f"{start_datetime.strftime('%Y-%m-%d %H:%M')} dan {end_datetime.strftime('%Y-%m-%d %H:%M')} gacha"
+        
         os.makedirs("reports", exist_ok=True)
-        filename = f"reports/report_{start_datetime.strftime('%Y%m%d_%H%M')}_{end_datetime.strftime('%Y%m%d_%H%M')}_{datetime.now().strftime('%H%M%S')}.pdf"
+        filename = f"reports/report_{group_name}_{start_datetime.strftime('%Y%m%d_%H%M')}_{end_datetime.strftime('%Y%m%d_%H%M')}_{datetime.now().strftime('%H%M%S')}.pdf"
+        
+        stats['group_name'] = group_name
+        stats['group_id'] = selected_group_id
+        
         await asyncio.to_thread(build_pdf_report, stats, period_label, filename)
+        
         short_text = (
-            f"{period_label} bo'yicha natija tayyor.\n"
-            f"Jami xabarlar: {stats['total_messages']}\n"
-            f"Faol foydalanuvchilar: {len(stats['users'])}"
+            f"🎯 **Hisobot tayyor!**\n\n"
+            f"🏢 **Guruh:** {group_name}\n"
+            f"📊 **Vaqt oralig'i:** {period_label}\n"
+            f"💬 **Jami xabarlar:** {stats['total_messages']}\n"
+            f"👤 **Faol foydalanuvchilar:** {len(stats['users'])}"
         )
-        await callback.message.answer(short_text)
+        
+        await callback.message.answer(short_text, parse_mode="Markdown")
         await callback.message.answer_document(
             FSInputFile(filename),
-            caption=f"📊 {period_label} uchun PDF hisobot",
+            caption=f"📊 {group_name} - {period_label} hisoboti",
         )
         await callback.message.answer(
             "👋 Admin panelga xush kelibsiz!",
             reply_markup=admin_main_menu_kb(),
         )
+    
     await callback.answer()
 
 
-# Calendar callback handler
 @router.callback_query(F.data.startswith("cal:"))
 async def calendar_handler(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         await callback.answer("Siz admin emassiz", show_alert=True)
         return
+    
     parts = callback.data.split(":")
     action = parts[1]
     current_state = await state.get_state()
+    
     if action == "prev":
         year = int(parts[2])
         month = int(parts[3])
@@ -931,12 +1129,14 @@ async def calendar_handler(callback: CallbackQuery, state: FSMContext):
         month = int(parts[3])
         day = int(parts[4])
         selected_date = datetime(year, month, day)
+        
         if current_state == AdminReportState.waiting_for_start_date:
             await state.update_data(start_date=selected_date)
             await state.set_state(AdminReportState.waiting_for_start_time)
             await callback.message.edit_text(
                 f"✅ Boshlang'ich sana: {selected_date.strftime('%Y-%m-%d')}\n\n"
-                "⏰ BOSHLANG'ICH SOATNI tanlang:",
+                "⏰ **BOSHLANG'ICH SOATNI tanlang:**",
+                parse_mode="Markdown",
                 reply_markup=time_select_kb()
             )
         elif current_state == AdminReportState.waiting_for_end_date:
@@ -944,13 +1144,16 @@ async def calendar_handler(callback: CallbackQuery, state: FSMContext):
             await state.set_state(AdminReportState.waiting_for_end_time)
             data = await state.get_data()
             start_date = data.get("start_date")
+            
             if selected_date < start_date:
                 await callback.answer("❌ Tugash sanasi boshlang'ich sanadan oldin bo'lishi mumkin emas!", show_alert=True)
                 return
+            
             await callback.message.edit_text(
                 f"✅ Boshlang'ich sana: {start_date.strftime('%Y-%m-%d')}\n"
                 f"✅ Tugash sanasi: {selected_date.strftime('%Y-%m-%d')}\n\n"
-                "⏰ TUGASH SOATINI tanlang:",
+                "⏰ **TUGASH SOATINI tanlang:**",
+                parse_mode="Markdown",
                 reply_markup=time_select_kb()
             )
         await callback.answer()
@@ -958,7 +1161,6 @@ async def calendar_handler(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
 
 
-# Manual time input handlers
 @router.message(AdminReportState.waiting_for_start_time)
 async def manual_time_input(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -1009,6 +1211,12 @@ async def manual_end_time_input(message: Message, state: FSMContext):
         data = await state.get_data()
         end_date = data.get("end_date")
         start_datetime = data.get("start_datetime")
+        selected_group_id = data.get("selected_group_id")
+        
+        if not selected_group_id:
+            await message.answer("❌ Xatolik: Guruh tanlanmagan!", reply_markup=cancel_report_kb())
+            return
+        
         end_datetime = datetime.combine(end_date, selected_time.time())
         if end_datetime < start_datetime:
             await message.answer(
@@ -1017,26 +1225,40 @@ async def manual_end_time_input(message: Message, state: FSMContext):
                 reply_markup=cancel_report_kb(),
             )
             return
+        
+        group_name = GROUP_NAMES.get(selected_group_id, f"Guruh {selected_group_id}")
+        
         await state.clear()
         await message.answer(
             f"📊 Hisobot tayyorlanmoqda...\n\n"
+            f"🏢 Guruh: {group_name}\n"
             f"📅 Boshlanish: {start_datetime.strftime('%Y-%m-%d %H:%M')}\n"
             f"📅 Tugash: {end_datetime.strftime('%Y-%m-%d %H:%M')}"
         )
-        stats = await get_stats_for_range(GROUP_CHAT_ID, start_datetime, end_datetime)
+        
+        stats = await get_stats_for_range(selected_group_id, start_datetime, end_datetime)
         period_label = f"{start_datetime.strftime('%Y-%m-%d %H:%M')} dan {end_datetime.strftime('%Y-%m-%d %H:%M')} gacha"
+        
         os.makedirs("reports", exist_ok=True)
-        filename = f"reports/report_{start_datetime.strftime('%Y%m%d_%H%M')}_{end_datetime.strftime('%Y%m%d_%H%M')}_{datetime.now().strftime('%H%M%S')}.pdf"
+        filename = f"reports/report_{group_name}_{start_datetime.strftime('%Y%m%d_%H%M')}_{end_datetime.strftime('%Y%m%d_%H%M')}_{datetime.now().strftime('%H%M%S')}.pdf"
+        
+        stats['group_name'] = group_name
+        stats['group_id'] = selected_group_id
+        
         await asyncio.to_thread(build_pdf_report, stats, period_label, filename)
+        
         short_text = (
-            f"{period_label} bo'yicha natija tayyor.\n"
-            f"Jami xabarlar: {stats['total_messages']}\n"
-            f"Faol foydalanuvchilar: {len(stats['users'])}"
+            f"🎯 **Hisobot tayyor!**\n\n"
+            f"🏢 **Guruh:** {group_name}\n"
+            f"📊 **Vaqt oralig'i:** {period_label}\n"
+            f"💬 **Jami xabarlar:** {stats['total_messages']}\n"
+            f"👤 **Faol foydalanuvchilar:** {len(stats['users'])}"
         )
-        await message.answer(short_text)
+        
+        await message.answer(short_text, parse_mode="Markdown")
         await message.answer_document(
             FSInputFile(filename),
-            caption=f"📊 {period_label} uchun PDF hisobot",
+            caption=f"📊 {group_name} - {period_label} hisoboti",
         )
         await message.answer(
             "👋 Admin panelga xush kelibsiz!",
@@ -1051,48 +1273,6 @@ async def manual_end_time_input(message: Message, state: FSMContext):
         )
 
 
-# Tez hisobotlar uchun handler
-@router.callback_query(F.data.startswith("quick:"))
-async def quick_report_handler(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("Siz admin emassiz", show_alert=True)
-        return
-    try:
-        hours = int(callback.data.split(":")[1])
-    except Exception:
-        await callback.answer("Noto'g'ri so'rov", show_alert=True)
-        return
-    await callback.answer("PDF tayyorlanmoqda...")
-    stats = await get_stats_for_hours(GROUP_CHAT_ID, hours)
-    labels = {
-        2: "2 soat",
-        4: "4 soat",
-        8: "8 soat",
-        24: "1 kun",
-        72: "3 kun",
-        168: "1 hafta",
-        720: "1 oy",
-    }
-    period_label = labels.get(hours, f"{hours} soat")
-    os.makedirs("reports", exist_ok=True)
-    filename = f"reports/report_{hours}h_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    await asyncio.to_thread(build_pdf_report, stats, period_label, filename)
-    short_text = (
-        f"So'nggi {period_label} bo'yicha natija tayyor.\n"
-        f"Jami xabarlar: {stats['total_messages']}\n"
-        f"Faol foydalanuvchilar: {len(stats['users'])}"
-    )
-    await callback.message.answer(short_text)
-    await callback.message.answer_document(
-        FSInputFile(filename),
-        caption=f"So'nggi {period_label} bo'yicha PDF hisobot",
-    )
-    await callback.message.answer(
-        "👋 Admin panelga xush kelibsiz!",
-        reply_markup=admin_main_menu_kb(),
-    )
-
-
 @router.message(Command("id"))
 async def get_id(message: Message):
     await message.answer(f"Chat ID: {message.chat.id}")
@@ -1100,14 +1280,17 @@ async def get_id(message: Message):
 
 @router.message(F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}))
 async def group_message_tracker(message: Message):
-    if message.chat.id != GROUP_CHAT_ID:
+    """Barcha guruhlardagi xabarlarni kuzatish"""
+    if message.chat.id not in GROUP_CHAT_IDS:
         return
     if not message.from_user or message.from_user.is_bot:
         return
+    
     text = message.text or message.caption or ""
     full_name = await get_user_fullname(message.from_user.id)
     if not full_name:
         full_name = message.from_user.full_name
+    
     await append_group_message(
         chat_id=message.chat.id,
         message_id=message.message_id,
@@ -1167,55 +1350,6 @@ async def set_commands():
     await bot.set_my_commands(commands)
 
 
-async function register_fullname(message: Message, state: FSMContext):
-    user = message.from_user
-    if not user:
-        return
-
-    full_name = message.text.strip()
-    
-    # Validatsiya
-    if len(full_name) < 3:
-        await message.answer(
-            "❌ Ism va familiya kamida 3 harfdan iborat bo'lishi kerak.\n"
-            "Qaytadan kiriting:"
-        )
-        return
-    
-    # Faqat harflar, bo'sh joy va tire ruxsat etiladi
-    if not all(c.isalpha() or c.isspace() or c == '-' for c in full_name):
-        await message.answer(
-            "❌ Ism va familiya faqat harflar, bo'sh joy va ('-') dan iborat bo'lishi kerak.\n"
-            "Masalan: Murodjonov Asilbek yoki Murodjonov-Asilbek\n\n"
-            "Qaytadan kiriting:"
-        )
-        return
-    
-    # 🔄 HAR DOIM yangilaymiz (mavjud bo'lsa ham)
-    await update_user_fullname(user.id, full_name)
-    await state.clear()
-    
-    # Admin yoki oddiy foydalanuvchi ekanligini tekshirish
-    if is_admin(user.id):
-        await message.answer(
-            f"✅ **Assalomu alaykum, {full_name}!**\n\n"
-            "📋 Siz admin sifatida tizimga kirdingiz.\n\n"
-            "🔽 **Admin panel:** /admin\n"
-            "📢 **Xabar yuborish:** /broadcast",
-            parse_mode="Markdown",
-            reply_markup=admin_main_menu_kb()
-        )
-    else:
-        await message.answer(
-            f"✅ **Assalomu alaykum, {full_name}!**\n\n"
-            "🎉 Xush kelibsiz!\n\n"
-            "📝 Endi siz bot orqali adminlarga xabar yuborishingiz mumkin.\n"
-            "💬 Xabarlaringiz adminlarga yetkaziladi va ular sizga javob berishi mumkin.\n\n"
-            "ℹ️ Ismingizni o'zgartirish uchun /editname buyrug'ini bosing.",
-            parse_mode="Markdown"
-        )
-
-
 async def main():
     global BOT_ID
     await set_commands()
@@ -1226,6 +1360,9 @@ async def main():
     
     await start_background_flush()
     logging.info(f"Bot ishga tushdi. Bot ID: {BOT_ID}")
+    logging.info(f"Kuzatiladigan guruhlar: {len(GROUP_CHAT_IDS)} ta")
+    for gid in GROUP_CHAT_IDS:
+        logging.info(f"  - {GROUP_NAMES.get(gid, gid)}: {gid}")
     logging.info("Google Sheets ga ulanildi")
     
     try:
