@@ -783,45 +783,76 @@ async def cancel_report(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "admin:quick")
 async def quick_report_menu(callback: CallbackQuery):
-    """Tez hisobot menyusi - vaqt va guruh tanlash"""
+    """Tez hisobot - avval guruh tanlash"""
     if not is_admin(callback.from_user.id):
         await callback.answer("Siz admin emassiz", show_alert=True)
         return
     
+    # Guruh tanlash tugmalari
+    keyboard = []
+    for group_id in GROUP_CHAT_IDS:
+        group_name = GROUP_NAMES.get(group_id, f"Guruh {group_id}")
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"📢 {group_name}", 
+                callback_data=f"quick_select_group:{group_id}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton(text="🔙 Ortga", callback_data="admin:back_to_main")])
+    
     await callback.message.edit_text(
-        "📊 **HISOBOT TURLARI**\n\n"
-        "1️⃣ Avval **vaqt oralig'ini** tanlang\n"
-        "2️⃣ Keyin **guruhni** tanlang\n\n"
+        "📊 **TEZ HISOBOT**\n\n"
+        "⚠️ **Avval guruhni tanlang:**\n\n"
         "👇 Quyidagi tugmalardan birini bosing:",
         parse_mode="Markdown",
-        reply_markup=quick_report_with_group_kb()
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
     )
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("quick_group:"))
-async def quick_report_group_selection(callback: CallbackQuery):
-    """Guruh tanlash va hisobot tayyorlash"""
+@router.callback_query(F.data.startswith("quick_select_group:"))
+async def quick_select_time(callback: CallbackQuery):
+    """Guruh tanlangandan keyin vaqt tanlash"""
     if not is_admin(callback.from_user.id):
         await callback.answer("Siz admin emassiz", show_alert=True)
         return
     
-    parts = callback.data.split(":")
-    if len(parts) != 2:
-        await callback.answer("Xatolik!", show_alert=True)
-        return
+    group_id = int(callback.data.split(":")[2])
+    group_name = GROUP_NAMES.get(group_id, f"Guruh {group_id}")
     
-    try:
-        selected_group_id = int(parts[1])
-    except ValueError:
-        await callback.answer("Noto'g'ri guruh ID!", show_alert=True)
-        return
+    # Tanlangan guruhni saqlash
+    await callback.state.update_data(selected_group_id=group_id)
+    
+    # Vaqt tanlash tugmalari
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="2 soat", callback_data=f"quick_final:{group_id}:2"),
+                InlineKeyboardButton(text="4 soat", callback_data=f"quick_final:{group_id}:4"),
+                InlineKeyboardButton(text="8 soat", callback_data=f"quick_final:{group_id}:8"),
+            ],
+            [
+                InlineKeyboardButton(text="1 kun", callback_data=f"quick_final:{group_id}:24"),
+                InlineKeyboardButton(text="3 kun", callback_data=f"quick_final:{group_id}:72"),
+                InlineKeyboardButton(text="1 hafta", callback_data=f"quick_final:{group_id}:168"),
+            ],
+            [
+                InlineKeyboardButton(text="1 oy", callback_data=f"quick_final:{group_id}:720"),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Ortga (guruh tanlash)", callback_data="admin:quick"),
+                InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="admin:back_to_main"),
+            ],
+        ]
+    )
     
     await callback.message.edit_text(
-        f"✅ Tanlangan guruh: **{GROUP_NAMES.get(selected_group_id, selected_group_id)}**\n\n"
-        "⏰ Vaqt oralig'ini tanlang:",
+        f"✅ **Tanlangan guruh:** {group_name}\n\n"
+        "⏰ **Endi vaqt oralig'ini tanlang:**\n\n"
+        "👇 Quyidagi tugmalardan birini bosing:",
         parse_mode="Markdown",
-        reply_markup=quick_time_selection_kb(selected_group_id)
+        reply_markup=keyboard
     )
     await callback.answer()
 
@@ -846,8 +877,17 @@ async def quick_report_final(callback: CallbackQuery):
         return
     
     group_name = GROUP_NAMES.get(group_id, f"Guruh {group_id}")
-    await callback.answer(f"📊 Hisobot tayyorlanmoqda: {group_name}...")
     
+    # "Hisobot tayyorlanmoqda" xabarini yuborish
+    await callback.message.edit_text(
+        f"📊 **Hisobot tayyorlanmoqda...**\n\n"
+        f"🏢 **Guruh:** {group_name}\n"
+        f"⏰ **Vaqt oralig'i:** So'nggi {hours} soat\n\n"
+        f"⏳ Iltimos, kuting...",
+        parse_mode="Markdown"
+    )
+    
+    # Statistikani olish
     stats = await get_stats_for_hours(group_id, hours)
     
     labels = {
@@ -861,14 +901,17 @@ async def quick_report_final(callback: CallbackQuery):
     }
     period_label = labels.get(hours, f"{hours} soat")
     
+    # PDF yaratish
     os.makedirs("reports", exist_ok=True)
-    filename = f"reports/report_{group_name}_{hours}h_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    clean_group_name = group_name.replace(" ", "_").replace("/", "_")
+    filename = f"reports/report_{clean_group_name}_{hours}h_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
     
     stats['group_name'] = group_name
     stats['group_id'] = group_id
     
     await asyncio.to_thread(build_pdf_report, stats, period_label, filename)
     
+    # Statistika xulosasi
     short_text = (
         f"🎯 **Hisobot tayyor!**\n\n"
         f"🏢 **Guruh:** {group_name}\n"
@@ -878,16 +921,25 @@ async def quick_report_final(callback: CallbackQuery):
         f"📎 PDF hisobot yuklab olish uchun tayyor."
     )
     
+    # PDF ni yuborish
     await callback.message.answer(short_text, parse_mode="Markdown")
     await callback.message.answer_document(
         FSInputFile(filename),
         caption=f"📊 {group_name} - So'nggi {period_label} hisoboti",
     )
+    
+    # Admin panelga qaytish tugmalari
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📊 Yangi hisobot", callback_data="admin:quick")],
+            [InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="admin:back_to_main")],
+        ]
+    )
+    
     await callback.message.answer(
         "👋 Admin panelga xush kelibsiz!",
-        reply_markup=admin_main_menu_kb(),
+        reply_markup=keyboard,
     )
-
 
 @router.callback_query(F.data == "admin:custom")
 async def custom_report_start(callback: CallbackQuery, state: FSMContext):
@@ -896,32 +948,47 @@ async def custom_report_start(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Siz admin emassiz", show_alert=True)
         return
     
+    # Guruh tanlash tugmalari
+    keyboard = []
+    for group_id in GROUP_CHAT_IDS:
+        group_name = GROUP_NAMES.get(group_id, f"Guruh {group_id}")
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"📢 {group_name}", 
+                callback_data=f"custom_select_group:{group_id}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton(text="🔙 Ortga", callback_data="admin:back_to_main")])
+    
     await callback.message.edit_text(
-        "📅 **HISOBOT YARATISH**\n\n"
-        "Avval hisobot olish kerak bo'lgan **GURUHNI TANLANG**:",
+        "📅 **QO'LDA VAQT BILAN HISOBOT**\n\n"
+        "⚠️ **Avval guruhni tanlang:**\n\n"
+        "👇 Quyidagi tugmalardan birini bosing:",
         parse_mode="Markdown",
-        reply_markup=groups_selection_kb("custom_group")
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
     )
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("custom_group:"))
+@router.callback_query(F.data.startswith("custom_select_group:"))
 async def custom_report_group_selected(callback: CallbackQuery, state: FSMContext):
     """Guruh tanlangandan keyin sana tanlash"""
     if not is_admin(callback.from_user.id):
         await callback.answer("Siz admin emassiz", show_alert=True)
         return
     
-    group_id = int(callback.data.split(":")[1])
+    group_id = int(callback.data.split(":")[2])
+    group_name = GROUP_NAMES.get(group_id, f"Guruh {group_id}")
+    
     await state.update_data(selected_group_id=group_id)
     await state.set_state(AdminReportState.waiting_for_start_date)
     
-    group_name = GROUP_NAMES.get(group_id, f"Guruh {group_id}")
     now = datetime.now()
     
     await callback.message.edit_text(
-        f"✅ Tanlangan guruh: **{group_name}**\n\n"
-        "📅 **BOSHLANG'ICH SANANI tanlang:**",
+        f"✅ **Tanlangan guruh:** {group_name}\n\n"
+        "📅 **Endi BOSHLANG'ICH SANANI tanlang:**",
         parse_mode="Markdown",
         reply_markup=create_calendar_kb(now.year, now.month)
     )
