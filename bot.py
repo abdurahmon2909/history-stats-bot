@@ -116,8 +116,19 @@ async def broadcast_start(message: Message, state: FSMContext):
 @router.message(Command("cancel"))
 async def cancel_broadcast_cmd(message: Message, state: FSMContext):
     """Bekor qilish"""
-    await state.clear()
-    await message.answer("❌ Xabar yuborish bekor qilindi!")
+    current_state = await state.get_state()
+    if current_state == BroadcastState.waiting_for_message:
+        await state.clear()
+        await message.answer("❌ Xabar yuborish bekor qilindi!")
+    elif current_state == RegisterState.waiting_for_fullname:
+        await state.clear()
+        await message.answer(
+            "❌ Ro'yxatdan o'tish bekor qilindi.\n\n"
+            "Qayta ro'yxatdan o'tish uchun /start buyrug'ini bosing."
+        )
+    else:
+        await state.clear()
+        await message.answer("❌ Bekor qilindi!")
 
 
 @router.message(BroadcastState.waiting_for_message)
@@ -374,7 +385,7 @@ def is_admin(user_id: int) -> bool:
 
 
 def admin_main_menu_kb() -> InlineKeyboardMarkup:
-    """Admin panel tugmalari (broadcast tugmasi YO'Q)"""
+    """Admin panel tugmalari"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📊 Tez hisobot", callback_data="admin:quick")],
@@ -546,40 +557,15 @@ async def start_handler(message: Message, state: FSMContext):
         )
         return
 
-    if is_admin(user.id):
-        await message.answer(
-            f"✅ Assalomu alaykum, {user.full_name}!\n\n"
-            "Admin panelga xush kelibsiz!",
-            reply_markup=admin_main_menu_kb(),
-        )
-        return
-
+    # ✅ HAMMA UCHUN (admin va oddiy foydalanuvchi) ism familiya so'raladi
     await state.set_state(RegisterState.waiting_for_fullname)
     await message.answer(
-        "✅ Obuna tasdiqlandi!\n\n"
-        "Iltimos, to'liq ismingiz va familiyangizni kiriting:\n"
+        "✅ **Obuna tasdiqlandi!**\n\n"
+        "📝 **Iltimos, TO'LIQ ismingiz va familiyangizni kiriting:**\n"
         "Masalan: Murodjonov Asilbek\n\n"
-        "Bu ma'lumot hisobotlarda ko'rsatiladi."
-    )
-
-
-@router.message(RegisterState.waiting_for_fullname)
-async def register_fullname(message: Message, state: FSMContext):
-    user = message.from_user
-    if not user:
-        return
-
-    full_name = message.text.strip()
-    if len(full_name) < 3:
-        await message.answer("Ism va familiya kamida 3 harfdan iborat bo'lishi kerak. Qaytadan kiriting:")
-        return
-
-    await update_user_fullname(user.id, full_name)
-    await state.clear()
-    await message.answer(
-        f"✅ Assalomu alaykum, {full_name}!\n\n"
-        "Xush kelibsiz.\n"
-        "Siz yuborgan xabarlar adminlarga yetkaziladi."
+        "⚠️ Bu ma'lumot hisobotlarda ko'rsatiladi.\n\n"
+        "❌ Bekor qilish: /cancel",
+        parse_mode="Markdown"
     )
 
 
@@ -618,27 +604,108 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
 
     await callback.answer("Obuna tasdiqlandi ✅")
 
-    if is_admin(user.id):
-        await callback.message.edit_text(
-            f"✅ Assalomu alaykum, {user.full_name}!\n\nAdmin panelga xush kelibsiz!",
-            reply_markup=admin_main_menu_kb(),
-        )
-        return
-
-    existing = await get_user_fullname(user.id)
-    if existing:
-        await callback.message.edit_text("✅ Obuna tasdiqlandi! Botdan foydalanishingiz mumkin.")
-        return
-
+    # ✅ HAMMA UCHUN (admin bo'lsa ham) ism familiya so'raladi
+    # Hech qanday existing tekshiruvi YO'Q
     await state.set_state(RegisterState.waiting_for_fullname)
-    await callback.message.edit_text(
-        "✅ Obuna tasdiqlandi!\n\n"
-        "Iltimos, to'liq ismingiz va familiyangizni kiriting:\n"
-        "Masalan: Alisher Navoiy"
+    
+    # Xabarni yangilash o'rniga yangi xabar yuboramiz
+    await callback.message.delete()
+    await callback.message.answer(
+        "✅ **Obuna tasdiqlandi!**\n\n"
+        "📝 **Iltimos, TO'LIQ ismingiz va familiyangizni kiriting:**\n"
+        "Masalan: Murodjonov Asilbek\n\n"
+        "⚠️ Bu ma'lumot hisobotlarda ko'rsatiladi.\n\n"
+        "❌ Bekor qilish: /cancel",
+        parse_mode="Markdown"
     )
 
 
-# ============ ADMIN PANEL ============
+@router.message(RegisterState.waiting_for_fullname)
+async def register_fullname(message: Message, state: FSMContext):
+    user = message.from_user
+    if not user:
+        return
+
+    full_name = message.text.strip()
+    
+    # Validatsiya
+    if len(full_name) < 3:
+        await message.answer(
+            "❌ Ism va familiya kamida 3 harfdan iborat bo'lishi kerak.\n"
+            "Qaytadan kiriting:"
+        )
+        return
+    
+    # Faqat harflar, bo'sh joy va tire ruxsat etiladi
+    if not all(c.isalpha() or c.isspace() or c == '-' for c in full_name):
+        await message.answer(
+            "❌ Ism va familiya faqat harflar, bo'sh joy va ('-') dan iborat bo'lishi kerak.\n"
+            "Masalan: Murodjonov Asilbek yoki Murodjonov-Asilbek\n\n"
+            "Qaytadan kiriting:"
+        )
+        return
+    
+    # 🔄 HAR DOIM yangilaymiz (mavjud bo'lsa ham)
+    await update_user_fullname(user.id, full_name)
+    await state.clear()
+    
+    # Admin yoki oddiy foydalanuvchi ekanligini tekshirish
+    if is_admin(user.id):
+        await message.answer(
+            f"✅ **Assalomu alaykum, {full_name}!**\n\n"
+            "📋 Siz admin sifatida tizimga kirdingiz.\n\n"
+            "🔽 **Admin panel:** /admin\n"
+            "📢 **Xabar yuborish:** /broadcast",
+            parse_mode="Markdown",
+            reply_markup=admin_main_menu_kb()
+        )
+    else:
+        await message.answer(
+            f"✅ **Assalomu alaykum, {full_name}!**\n\n"
+            "🎉 Xush kelibsiz!\n\n"
+            "📝 Endi siz bot orqali adminlarga xabar yuborishingiz mumkin.\n"
+            "💬 Xabarlaringiz adminlarga yetkaziladi va ular sizga javob berishi mumkin.\n\n"
+            "ℹ️ Ismingizni o'zgartirish uchun /editname buyrug'ini bosing.",
+            parse_mode="Markdown"
+        )
+
+
+@router.message(Command("editname"))
+async def edit_fullname(message: Message, state: FSMContext):
+    """Ism familiyani o'zgartirish"""
+    user = message.from_user
+    if not user:
+        return
+    
+    # Obuna tekshiruvi
+    subscribed, status = await check_subscription(user.id)
+    if status == "inaccessible":
+        await message.answer(
+            "Hozircha kanal obunasini avtomatik tekshirib bo'lmadi.\n"
+            "Keyinroq urinib ko'ring."
+        )
+        return
+    if status == "error":
+        await message.answer(
+            "Tekshiruvda xatolik bo'ldi. Keyinroq qayta urinib ko'ring."
+        )
+        return
+    if not subscribed:
+        await message.answer(
+            "Avval kanalga a'zo bo'ling.",
+            reply_markup=join_channel_kb(),
+        )
+        return
+    
+    await state.set_state(RegisterState.waiting_for_fullname)
+    await message.answer(
+        "📝 **Ism familiyangizni o'zgartirish**\n\n"
+        "Yangi to'liq ismingiz va familiyangizni kiriting:\n"
+        "Masalan: Murodjonov Asilbek\n\n"
+        "❌ Bekor qilish: /cancel",
+        parse_mode="Markdown"
+    )
+
 
 @router.message(Command("admin"))
 async def admin_command(message: Message):
@@ -1094,9 +1161,59 @@ async def set_commands():
         BotCommand(command="start", description="Botni ishga tushirish"),
         BotCommand(command="admin", description="Admin panel"),
         BotCommand(command="broadcast", description="Barcha foydalanuvchilarga elon yuborish"),
+        BotCommand(command="editname", description="Ism familiyani o'zgartirish"),
         BotCommand(command="id", description="Chat ID ni ko'rish"),
     ]
     await bot.set_my_commands(commands)
+
+
+async function register_fullname(message: Message, state: FSMContext):
+    user = message.from_user
+    if not user:
+        return
+
+    full_name = message.text.strip()
+    
+    # Validatsiya
+    if len(full_name) < 3:
+        await message.answer(
+            "❌ Ism va familiya kamida 3 harfdan iborat bo'lishi kerak.\n"
+            "Qaytadan kiriting:"
+        )
+        return
+    
+    # Faqat harflar, bo'sh joy va tire ruxsat etiladi
+    if not all(c.isalpha() or c.isspace() or c == '-' for c in full_name):
+        await message.answer(
+            "❌ Ism va familiya faqat harflar, bo'sh joy va ('-') dan iborat bo'lishi kerak.\n"
+            "Masalan: Murodjonov Asilbek yoki Murodjonov-Asilbek\n\n"
+            "Qaytadan kiriting:"
+        )
+        return
+    
+    # 🔄 HAR DOIM yangilaymiz (mavjud bo'lsa ham)
+    await update_user_fullname(user.id, full_name)
+    await state.clear()
+    
+    # Admin yoki oddiy foydalanuvchi ekanligini tekshirish
+    if is_admin(user.id):
+        await message.answer(
+            f"✅ **Assalomu alaykum, {full_name}!**\n\n"
+            "📋 Siz admin sifatida tizimga kirdingiz.\n\n"
+            "🔽 **Admin panel:** /admin\n"
+            "📢 **Xabar yuborish:** /broadcast",
+            parse_mode="Markdown",
+            reply_markup=admin_main_menu_kb()
+        )
+    else:
+        await message.answer(
+            f"✅ **Assalomu alaykum, {full_name}!**\n\n"
+            "🎉 Xush kelibsiz!\n\n"
+            "📝 Endi siz bot orqali adminlarga xabar yuborishingiz mumkin.\n"
+            "💬 Xabarlaringiz adminlarga yetkaziladi va ular sizga javob berishi mumkin.\n\n"
+            "ℹ️ Ismingizni o'zgartirish uchun /editname buyrug'ini bosing.",
+            parse_mode="Markdown"
+        )
 
 
 async def main():
