@@ -308,7 +308,126 @@ async def edit_fullname_handler(message: Message, state: FSMContext):
         parse_mode="HTML",
     )
 
+# ─────────────────────────────────────────────────────────────────────────────
+# USER → ADMIN SUPPORT
+# ─────────────────────────────────────────────────────────────────────────────
 
+@router.message(
+    F.chat.type == ChatType.PRIVATE,
+    ~F.text.startswith("/"),
+)
+async def user_message_to_admin(message: Message):
+    """
+    User yozgan xabarni adminlarga forward qiladi
+    """
+    user = message.from_user
+    if not user:
+        return
+
+    # Adminning o'zi yozsa o'tkazib yuboramiz
+    if is_admin(user.id):
+        return
+
+    try:
+        full_name = await get_user_fullname(user.id)
+        full_name = full_name or user.full_name
+
+        header = (
+            f"📩 <b>Yangi murojaat</b>\n\n"
+            f"👤 Ism: {full_name}\n"
+            f"🆔 ID: <code>{user.id}</code>\n"
+            f"📎 Username: @{user.username if user.username else 'yo‘q'}"
+        )
+
+        for admin_id in ADMIN_IDS:
+            # Avval info yuboriladi
+            sent_info = await bot.send_message(
+                admin_id,
+                header,
+                parse_mode="HTML",
+            )
+
+            # Keyin user xabari forward qilinadi
+            forwarded = await message.forward(admin_id)
+
+            # Reply system uchun mapping saqlaymiz
+            SUPPORT_REPLY_MAP[forwarded.message_id] = user.id
+
+        await message.answer(
+            "✅ Xabaringiz adminlarga yuborildi.\n"
+            "✍️ Tez orada javob beriladi."
+        )
+
+    except Exception as e:
+        logging.error(f"User message forward error: {e}")
+        await message.answer("❌ Xabar yuborishda xatolik.")
+
+
+# Forward qilingan message_id -> user_id
+SUPPORT_REPLY_MAP: dict[int, int] = {}
+
+
+@router.message(
+    F.chat.type == ChatType.PRIVATE,
+    F.reply_to_message
+)
+async def admin_reply_to_user(message: Message):
+    """
+    Admin reply qilsa userga yuboradi
+    """
+    user = message.from_user
+
+    if not user or not is_admin(user.id):
+        return
+
+    replied = message.reply_to_message
+
+    if not replied:
+        return
+
+    target_user_id = SUPPORT_REPLY_MAP.get(replied.message_id)
+
+    if not target_user_id:
+        return
+
+    try:
+        # TEXT
+        if message.text:
+            await bot.send_message(
+                target_user_id,
+                f"📨 <b>Admin javobi:</b>\n\n{message.text}",
+                parse_mode="HTML",
+            )
+
+        # PHOTO
+        elif message.photo:
+            await bot.send_photo(
+                target_user_id,
+                photo=message.photo[-1].file_id,
+                caption=message.caption or "📨 Admin javobi",
+            )
+
+        # VIDEO
+        elif message.video:
+            await bot.send_video(
+                target_user_id,
+                video=message.video.file_id,
+                caption=message.caption or "📨 Admin javobi",
+            )
+
+        # DOCUMENT
+        elif message.document:
+            await bot.send_document(
+                target_user_id,
+                document=message.document.file_id,
+                caption=message.caption or "📨 Admin javobi",
+            )
+
+        await message.reply("✅ Javob foydalanuvchiga yuborildi.")
+
+    except Exception as e:
+        logging.error(f"Admin reply error: {e}")
+        await message.reply(f"❌ Xatolik: {e}")
 # ─────────────────────────────────────────────────────────────────────────────
 # /cancel
 # ─────────────────────────────────────────────────────────────────────────────
