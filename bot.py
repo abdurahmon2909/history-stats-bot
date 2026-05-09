@@ -609,6 +609,7 @@ async def register_fullname(message: Message, state: FSMContext):
         return
 
     full_name = message.text.strip()
+    logging.info(f"📝 REGISTER: user_id={user.id}, full_name='{full_name}'")
     
     # Validatsiya
     if len(full_name) < 3:
@@ -618,18 +619,22 @@ async def register_fullname(message: Message, state: FSMContext):
         )
         return
     
-    # Faqat harflar, bo'sh joy va tire ruxsat etiladi
     if not all(c.isalpha() or c.isspace() or c == '-' for c in full_name):
         await message.answer(
             "❌ Ism va familiya faqat harflar, bo'sh joy va ('-') dan iborat bo'lishi kerak.\n"
-            "Masalan: Murodjonov Asilbek yoki Murodjonov-Asilbek\n\n"
+            "Masalan: Murodjonov Asilbek\n\n"
             "Qaytadan kiriting:"
         )
         return
     
     # ============ MUHIM: ISMNI SHEETGA YOZISH ============
-    # update_user_fullname ismni sheetga yozadi VA cache'ni yangilaydi
+    logging.info(f"📝 UPDATING USER FULLNAME: {user.id} -> {full_name}")
     await update_user_fullname(user.id, full_name)
+    
+    # Tekshirish uchun qayta o'qiymiz
+    saved_name = await get_user_fullname(user.id)
+    logging.info(f"📝 SAVED NAME: {saved_name}")
+    
     await state.clear()
     
     # Xush kelibsiz xabari
