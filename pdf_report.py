@@ -36,13 +36,28 @@ tashkent_tz = ZoneInfo("Asia/Tashkent")
 
 
 def _safe(val) -> str:
+    text = str(val or "")
+
+    replacements = {
+        "o‘": "o'",
+        "g‘": "g'",
+        "O‘": "O'",
+        "G‘": "G'",
+        "’": "'",
+        "`": "'",
+        "ʻ": "'",
+        "ʼ": "'",
+    }
+
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+
     return (
-        str(val or "")
+        text
         .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
-
 
 def classify_activity_by_percentile(users: list) -> list:
     """
