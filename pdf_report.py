@@ -11,6 +11,9 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
 from reportlab.platypus import (
     SimpleDocTemplate,
     Table,
@@ -22,6 +25,16 @@ from reportlab.platypus import (
 from zoneinfo import ZoneInfo
 
 tashkent_tz = ZoneInfo("Asia/Tashkent")
+
+# Unicode fontlar
+pdfmetrics.registerFont(
+    TTFont("DejaVu", "DejaVuSans.ttf")
+)
+
+pdfmetrics.registerFont(
+    TTFont("DejaVu-Bold", "DejaVuSans-Bold.ttf")
+)
+
 
 
 def _safe(val) -> str:
@@ -78,7 +91,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         "Link",
         parent=styles["Normal"],
         alignment=TA_CENTER,
-        fontName="Helvetica-Bold",
+        fontName="DejaVu-Bold",
         fontSize=12,
         textColor=colors.HexColor("#0f7fa8"),
         leading=16,
@@ -89,7 +102,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         "Ad",
         parent=styles["Normal"],
         alignment=TA_CENTER,
-        fontName="Helvetica-Bold",
+        fontName="DejaVu-Bold",
         fontSize=11,
         textColor=colors.HexColor("#c62828"),
         leading=15,
@@ -100,7 +113,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         "TitleCenter",
         parent=styles["Title"],
         alignment=TA_CENTER,
-        fontName="Helvetica-Bold",
+        fontName="DejaVu-Bold",
         fontSize=18,
         textColor=colors.HexColor("#123b5d"),
         leading=22,
@@ -111,7 +124,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         "GroupTitle",
         parent=styles["Title"],
         alignment=TA_CENTER,
-        fontName="Helvetica-Bold",
+        fontName="DejaVu-Bold",
         fontSize=16,
         textColor=colors.HexColor("#1a5490"),
         leading=20,
@@ -122,7 +135,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         "Info",
         parent=styles["Normal"],
         alignment=TA_LEFT,
-        fontName="Helvetica",
+        fontName="DejaVu",
         fontSize=10,
         textColor=colors.black,
         leading=14,
@@ -132,7 +145,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         "BoxTitle",
         parent=styles["Normal"],
         alignment=TA_CENTER,
-        fontName="Helvetica-Bold",
+        fontName="DejaVu-Bold",
         fontSize=11,
         textColor=colors.white,
         leading=14,
@@ -142,7 +155,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         "BoxValue",
         parent=styles["Normal"],
         alignment=TA_CENTER,
-        fontName="Helvetica-Bold",
+        fontName="DejaVu-Bold",
         fontSize=14,
         textColor=colors.white,
         leading=18,
@@ -303,7 +316,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
         top3_style = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#123b5d")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTNAME", (0, 0), (-1, 0), "DejaVu-Bold"),
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("FONTSIZE", (0, 0), (-1, -1), 9),
@@ -356,7 +369,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
     base_style = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f4e78")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 0), (-1, 0), "DejaVu-Bold"),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
         ("FONTSIZE", (0, 0), (-1, -1), 8.8),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
