@@ -1404,44 +1404,74 @@ async def group_message_tracker(message: Message):
 @router.message(F.chat.type == ChatType.PRIVATE)
 async def private_message_router(message: Message, state: FSMContext):
     user = message.from_user
+
     if not user:
         return
-    if await state.get_state() is not None:
+
+    # AGAR USER HOZIR REGISTRATION STATE DA BO'LSA
+    # bu handler ishlamasin
+    current_state = await state.get_state()
+
+    if current_state == RegisterState.waiting_for_fullname:
         return
+
+    # boshqa state bo'lsa ham chiqib ketadi
+    if current_state is not None:
+        return
+
     if message.text and message.text.startswith("/"):
         return
+
     subscribed, status = await check_subscription(user.id)
-    
-    # ✅ TUZATILDI: Telegramdan ism olmaymiz, faqat bo'sh string yuboramiz
+
+    # Telegram fullname NI OLMAYMIZ
     await upsert_user(
         user_id=user.id,
-        full_name="",  # BO'SH - telegramdan ism olmaymiz
+        full_name="",
         username=user.username,
         is_subscribed=1 if subscribed else 0,
     )
-    
+
     if status == "inaccessible":
         await message.answer(
             "Hozircha kanal obunasini avtomatik tekshirib bo'lmadi.\n"
             "Keyinroq urinib ko'ring."
         )
         return
+
     if status == "error":
         await message.answer(
             "Tekshiruvda xatolik bo'ldi. Keyinroq qayta urinib ko'ring."
         )
         return
+
     if not subscribed:
         await message.answer(
             "Avval kanalga a'zo bo'ling.",
             reply_markup=join_channel_kb(),
         )
         return
+
+    # fullname mavjudligini tekshiramiz
+    has_name = await has_user_fullname(user.id)
+
+    if not has_name:
+        await state.set_state(RegisterState.waiting_for_fullname)
+
+        await message.answer(
+            "📝 Iltimos, ism va familiyangizni kiriting:\n\n"
+            "Masalan: Murodjonov Asilbek",
+            parse_mode="HTML"
+        )
+        return
+
+    # adminlarga forward
     for admin_id in ADMIN_IDS:
         try:
             await message.forward(chat_id=admin_id)
         except Exception as e:
             logging.exception("Adminga forward qilishda xato: %s", e)
+
     await message.answer("✅ Xabaringiz adminga yuborildi.")
 
 
