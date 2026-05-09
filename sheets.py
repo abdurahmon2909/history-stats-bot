@@ -38,7 +38,7 @@ USER_DATA_CACHE: dict[int, dict[str, str]] = {}
 
 # User fullname cache with TTL
 USER_FULLNAME_CACHE: dict[int, tuple[str, float]] = {}
-CACHE_TTL = 300  # 5 daqiqa
+CACHE_TTL = 0  # 5 daqiqa
 
 # Message buffer
 MESSAGE_BUFFER: list[list[str]] = []
@@ -306,40 +306,24 @@ async def get_user_fullname(user_id: int) -> str | None:
 
 
 def _get_user_fullname_sync(user_id: int) -> str | None:
-    """Foydalanuvchining to'liq ismini qaytaradi - faqat Google Sheets'dan"""
-    global USER_DATA_CACHE, USER_ROW_CACHE, USER_FULLNAME_CACHE
-
-    # Avval TTL cache dan tekshiramiz
-    if user_id in USER_FULLNAME_CACHE:
-        full_name, timestamp = USER_FULLNAME_CACHE[user_id]
-        if time.time() - timestamp < CACHE_TTL:
-            return full_name if full_name and full_name.strip() else None
-
-    # Keyin oddiy cache dan tekshiramiz
-    if user_id in USER_DATA_CACHE:
-        full_name = USER_DATA_CACHE[user_id].get("full_name", "")
-        if full_name and full_name.strip():
-            USER_FULLNAME_CACHE[user_id] = (full_name, time.time())
-            return full_name
-        return None
-
-    # Cache da bo'lmasa, Google Sheets'dan o'qiymiz
     try:
         ws = _get_ws_sync(WS_USERS)
+
         cell = ws.find(str(user_id), in_column=1)
-        if cell:
-            row = ws.row_values(cell.row)
-            if len(row) > 1 and row[1] and row[1].strip():
-                full_name = row[1]
-                USER_ROW_CACHE[user_id] = cell.row
-                if user_id in USER_DATA_CACHE:
-                    USER_DATA_CACHE[user_id]["full_name"] = full_name
-                else:
-                    USER_DATA_CACHE[user_id] = {"full_name": full_name}
-                USER_FULLNAME_CACHE[user_id] = (full_name, time.time())
+
+        if not cell:
+            return None
+
+        row = ws.row_values(cell.row)
+
+        if len(row) > 1:
+            full_name = row[1].strip()
+
+            if full_name:
                 return full_name
+
     except Exception as e:
-        logging.error(f"User fullname olishda xato (user_id={user_id}): {e}")
+        logging.error(f"User fullname olishda xato: {e}")
 
     return None
 
