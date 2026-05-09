@@ -36,10 +36,6 @@ USER_ROW_CACHE: dict[int, int] = {}
 # User data cache
 USER_DATA_CACHE: dict[int, dict[str, str]] = {}
 
-# User fullname cache with TTL
-USER_FULLNAME_CACHE: dict[int, tuple[str, float]] = {}
-CACHE_TTL = 300  # 5 daqiqa
-
 # Message buffer
 MESSAGE_BUFFER: list[list[str]] = []
 BUFFER_LOCK = asyncio.Lock()
@@ -61,6 +57,7 @@ def _connect_sync():
     creds = Credentials.from_service_account_info(GOOGLE_CREDS, scopes=SCOPES)
     gc = gspread.authorize(creds)
     spreadsheet = gc.open_by_key(SHEET_ID)
+    logging.info("Google Sheets ga ulandi")
     return spreadsheet
 
 
@@ -93,13 +90,16 @@ def _ensure_ws_sync(title: str, headers: list[str]):
 
     try:
         ws = spreadsheet.worksheet(title)
+        logging.info(f"Worksheet '{title}' mavjud")
     except WorksheetNotFound:
         ws = spreadsheet.add_worksheet(title=title, rows=1000, cols=max(10, len(headers) + 2))
         ws.append_row(headers)
+        logging.info(f"Yangi worksheet '{title}' yaratildi")
     else:
         existing_headers = ws.row_values(1)
         if not existing_headers:
             ws.append_row(headers)
+            logging.info(f"Worksheet '{title}' ga header qo'shildi")
 
     WS_CACHE[title] = ws
     return ws
@@ -117,30 +117,31 @@ def _get_ws_sync(title: str):
 
 
 def _warm_user_cache_sync():
-    global USER_ROW_CACHE, USER_DATA_CACHE, USER_FULLNAME_CACHE
+    """Barcha userlarni sheetdan cache ga yuklash"""
+    global USER_ROW_CACHE, USER_DATA_CACHE
 
+    logging.info("Cache yuklanmoqda...")
+    
     ws = _get_ws_sync(WS_USERS)
     values = _retry_sync(ws.get_all_values)
 
     USER_ROW_CACHE = {}
     USER_DATA_CACHE = {}
-    USER_FULLNAME_CACHE = {}
-    current_time = time.time()
 
     for idx, row in enumerate(values[1:], start=2):
-        if not row:
+        if not row or len(row) < 1:
             continue
 
         try:
             user_id = int(str(row[0]).strip())
-        except Exception:
+        except (ValueError, IndexError):
             continue
 
-        full_name = row[1] if len(row) > 1 else ""
-        username = row[2] if len(row) > 2 else ""
-        is_subscribed = row[3] if len(row) > 3 else "0"
-        first_seen = row[4] if len(row) > 4 else ""
-        last_seen = row[5] if len(row) > 5 else ""
+        full_name = row[1].strip() if len(row) > 1 and row[1] else ""
+        username = row[2].strip() if len(row) > 2 and row[2] else ""
+        is_subscribed = row[3].strip() if len(row) > 3 and row[3] else "0"
+        first_seen = row[4].strip() if len(row) > 4 else ""
+        last_seen = row[5].strip() if len(row) > 5 else ""
 
         USER_ROW_CACHE[user_id] = idx
         USER_DATA_CACHE[user_id] = {
@@ -150,8 +151,11 @@ def _warm_user_cache_sync():
             "first_seen": first_seen,
             "last_seen": last_seen,
         }
-        if full_name and full_name.strip():
-            USER_FULLNAME_CACHE[user_id] = (full_name, current_time)
+        
+        if full_name:
+            logging.info(f"Cache: user {user_id} -> {full_name}")
+
+    logging.info(f"Cache yuklandi: {len(USER_DATA_CACHE)} ta user")
 
 
 async def init_sheets():
@@ -170,6 +174,7 @@ async def init_sheets():
     )
 
     await asyncio.to_thread(_warm_user_cache_sync)
+    logging.info("Sheets initializatsiyasi tugadi")
 
 
 async def upsert_user(
@@ -187,13 +192,12 @@ def _upsert_user_sync(
     username: str | None,
     is_subscribed: int | None = None,
 ):
-    global USER_ROW_CACHE, USER_DATA_CACHE, USER_FULLNAME_CACHE
+    global USER_ROW_CACHE, USER_DATA_CACHE
 
     ws = _get_ws_sync(WS_USERS)
     now = datetime.now(timezone.utc).isoformat()
     row_num = USER_ROW_CACHE.get(user_id)
 
-    # Foydalanuvchi nomini tozalash
     cleaned_full_name = full_name.strip() if full_name else ""
 
     if row_num:
@@ -202,7 +206,6 @@ def _upsert_user_sync(
         first_seen = cached.get("first_seen", now) or now
         new_sub = str(is_subscribed) if is_subscribed is not None else current_sub
         
-        # Mavjud ismni saqlash yoki yangilash
         existing_full_name = cached.get("full_name", "")
         final_full_name = existing_full_name if existing_full_name and existing_full_name.strip() else cleaned_full_name
         
@@ -224,11 +227,8 @@ def _upsert_user_sync(
             "first_seen": first_seen,
             "last_seen": now,
         }
-        if final_full_name and final_full_name.strip():
-            USER_FULLNAME_CACHE[user_id] = (final_full_name, time.time())
 
     else:
-        # Yangi foydalanuvchi
         values = [
             str(user_id),
             cleaned_full_name,
@@ -249,22 +249,24 @@ def _upsert_user_sync(
             "first_seen": now,
             "last_seen": now,
         }
-        if cleaned_full_name:
-            USER_FULLNAME_CACHE[user_id] = (cleaned_full_name, time.time())
 
 
 def _update_user_fullname_sync(user_id: int, new_full_name: str):
     """Foydalanuvchining to'liq ismini yangilaydi"""
-    global USER_ROW_CACHE, USER_DATA_CACHE, USER_FULLNAME_CACHE
+    global USER_ROW_CACHE, USER_DATA_CACHE
 
+    logging.info(f"_update_user_fullname_sync: user={user_id}, name='{new_full_name}'")
+    
     ws = _get_ws_sync(WS_USERS)
     row_num = USER_ROW_CACHE.get(user_id)
     cleaned_name = new_full_name.strip() if new_full_name else ""
 
     if not cleaned_name:
+        logging.warning(f"Bo'sh ism saqlanmadi: user={user_id}")
         return
 
     if not row_num:
+        # Yangi foydalanuvchi
         now = datetime.now(timezone.utc).isoformat()
         values = [
             str(user_id),
@@ -274,6 +276,7 @@ def _update_user_fullname_sync(user_id: int, new_full_name: str):
             now,
             now,
         ]
+        logging.info(f"Yangi user qo'shilmoqda: {values}")
         _retry_sync(ws.append_row, values)
 
         current_rows = _retry_sync(lambda: len(ws.col_values(1)))
@@ -285,71 +288,78 @@ def _update_user_fullname_sync(user_id: int, new_full_name: str):
             "first_seen": now,
             "last_seen": now,
         }
-        USER_FULLNAME_CACHE[user_id] = (cleaned_name, time.time())
+        logging.info(f"Yangi user qo'shildi: {user_id} -> {cleaned_name}")
         return
 
+    # Mavjud foydalanuvchi - update
     cached = USER_DATA_CACHE.get(user_id, {})
     now = datetime.now(timezone.utc).isoformat()
     
-    # Faqat mavjud ism bo'sh bo'lsa yoki yangi ism kelgan bo'lsa yangilaymiz
-    existing_name = cached.get("full_name", "")
-    if not existing_name.strip() and cleaned_name:
-        final_name = cleaned_name
-    elif existing_name.strip() and cleaned_name and existing_name.strip() != cleaned_name:
-        # Ism o'zgargan bo'lsa, yangilaymiz (lekin faqat kichik o'zgarishlar bo'lsa)
-        # Bu qismni xohlasangiz o'chirib qo'yishingiz mumkin
-        final_name = cleaned_name
-    else:
-        final_name = existing_name
-
     values = [[
         str(user_id),
-        final_name,
+        cleaned_name,  # Yangi ism
         cached.get("username", ""),
         cached.get("is_subscribed", "1"),
         cached.get("first_seen", now),
         now,
     ]]
 
+    logging.info(f"User {user_id} yangilanmoqda: range A{row_num}:F{row_num}, values={values}")
     _retry_sync(ws.update, range_name=f"A{row_num}:F{row_num}", values=values)
 
-    USER_DATA_CACHE[user_id]["full_name"] = final_name
+    # Cache ni yangilash
+    USER_DATA_CACHE[user_id] = USER_DATA_CACHE.get(user_id, {})
+    USER_DATA_CACHE[user_id]["full_name"] = cleaned_name
     USER_DATA_CACHE[user_id]["last_seen"] = now
-    USER_FULLNAME_CACHE[user_id] = (final_name, time.time())
+    
+    logging.info(f"User {user_id} ismi '{cleaned_name}' ga yangilandi")
 
 
 async def update_user_fullname(user_id: int, full_name: str):
     """Foydalanuvchining to'liq ismini yangilaydi"""
     if full_name and full_name.strip():
+        logging.info(f"update_user_fullname called: user={user_id}, name='{full_name}'")
         await asyncio.to_thread(_update_user_fullname_sync, user_id, full_name)
+    else:
+        logging.warning(f"update_user_fullname: bo'sh ism - user={user_id}")
 
 
 async def get_user_fullname(user_id: int) -> str | None:
     """Foydalanuvchining to'liq ismini qaytaradi"""
-    # Avval cachedan tekshiramiz
-    if user_id in USER_FULLNAME_CACHE:
-        cached_name, cached_time = USER_FULLNAME_CACHE[user_id]
-        if time.time() - cached_time < CACHE_TTL:
-            return cached_name
+    # Cache'dan tekshirish
+    if user_id in USER_DATA_CACHE:
+        full_name = USER_DATA_CACHE[user_id].get("full_name", "")
+        if full_name and full_name.strip():
+            logging.info(f"get_user_fullname cache'dan: {user_id} -> '{full_name}'")
+            return full_name
     
-    # Cache da bo'lmasa, sheetdan o'qiymiz
-    return await asyncio.to_thread(_get_user_fullname_sync, user_id)
+    # Cache da bo'lmasa, sheetdan o'qish
+    logging.info(f"get_user_fullname sheetdan o'qilmoqda: {user_id}")
+    result = await asyncio.to_thread(_get_user_fullname_sync, user_id)
+    return result
 
 
 def _get_user_fullname_sync(user_id: int) -> str | None:
+    """Sheetdan foydalanuvchi ismini o'qiydi"""
     try:
         ws = _get_ws_sync(WS_USERS)
         cell = ws.find(str(user_id), in_column=1)
 
         if not cell:
+            logging.info(f"User {user_id} sheetda topilmadi")
             return None
 
         row = ws.row_values(cell.row)
+        logging.info(f"User {user_id} sheet row: {row}")
 
         if len(row) > 1:
             full_name = row[1].strip()
             if full_name:
-                USER_FULLNAME_CACHE[user_id] = (full_name, time.time())
+                # Cache ni yangilash
+                if user_id not in USER_DATA_CACHE:
+                    USER_DATA_CACHE[user_id] = {}
+                USER_DATA_CACHE[user_id]["full_name"] = full_name
+                logging.info(f"User {user_id} ismi sheetdan o'qildi: '{full_name}'")
                 return full_name
 
     except Exception as e:
@@ -361,7 +371,9 @@ def _get_user_fullname_sync(user_id: int) -> str | None:
 async def has_user_fullname(user_id: int) -> bool:
     """Foydalanuvchining ismi mavjudligini tekshiradi"""
     full_name = await get_user_fullname(user_id)
-    return bool(full_name and full_name.strip())
+    result = bool(full_name and full_name.strip())
+    logging.info(f"has_user_fullname: {user_id} -> {result} (name='{full_name}')")
+    return result
 
 
 async def append_group_message(
@@ -373,22 +385,23 @@ async def append_group_message(
     text: str | None,
     sent_at: datetime,
 ):
-    # Avval user ma'lumotlarini yangilaymiz (ismni saqlash uchun)
-    cleaned_full_name = full_name.strip() if full_name else ""
-    
-    if cleaned_full_name:
-        # User nomini sheetga yozamiz
-        existing_name = await get_user_fullname(user_id)
-        if not existing_name or not existing_name.strip():
-            await update_user_fullname(user_id, cleaned_full_name)
-    
     sent_at_tashkent = sent_at.astimezone(TASHKENT_TZ)
+    
+    # Cache'dan ismni olish
+    cached_name = await get_user_fullname(user_id)
+    
+    if cached_name:
+        display_name = cached_name
+    elif full_name and full_name.strip():
+        display_name = full_name.strip()
+    else:
+        display_name = "Ism kiritilmagan"
     
     row = [
         str(chat_id),
         str(message_id),
         str(user_id),
-        cleaned_full_name if cleaned_full_name else "Ism kiritilmagan",
+        display_name,
         username or "",
         (text or "")[:45000],
         sent_at_tashkent.isoformat(),
@@ -440,6 +453,7 @@ async def start_background_flush():
     global FLUSH_TASK
     if FLUSH_TASK is None or FLUSH_TASK.done():
         FLUSH_TASK = asyncio.create_task(_periodic_flush_loop())
+        logging.info("Background flush started")
 
 
 async def stop_background_flush():
@@ -453,6 +467,7 @@ async def stop_background_flush():
             pass
 
     await flush_message_buffer()
+    logging.info("Background flush stopped")
 
 
 def classify_activity(share_percent: float) -> str:
@@ -476,7 +491,6 @@ def _get_stats_for_hours_sync(chat_id: int, hours: int) -> dict[str, Any]:
 
     now = datetime.now(timezone.utc)
     start_dt = now - timedelta(hours=hours)
-    start_dt_tashkent = start_dt.astimezone(TASHKENT_TZ)
 
     filtered = []
     for row in rows:
@@ -496,7 +510,7 @@ def _get_stats_for_hours_sync(chat_id: int, hours: int) -> dict[str, Any]:
             if sent_at.tzinfo is None:
                 sent_at = sent_at.replace(tzinfo=TASHKENT_TZ)
 
-            if sent_at < start_dt_tashkent:
+            if sent_at < start_dt:
                 continue
 
             filtered.append(row)
@@ -518,10 +532,9 @@ def _get_stats_for_hours_sync(chat_id: int, hours: int) -> dict[str, Any]:
         username = str(row.get("username", "")).strip()
 
         if user_id not in per_user:
-            # Sheetdan to'g'ri ismni olish
-            cached_name = _get_user_fullname_sync(user_id)
-            if cached_name:
-                full_name = cached_name
+            # Cache'dan to'g'ri ismni olish
+            if user_id in USER_DATA_CACHE and USER_DATA_CACHE[user_id].get("full_name"):
+                full_name = USER_DATA_CACHE[user_id]["full_name"]
 
             per_user[user_id] = {
                 "user_id": user_id,
@@ -550,7 +563,6 @@ def _get_stats_for_hours_sync(chat_id: int, hours: int) -> dict[str, Any]:
 
 
 async def get_stats_for_range(chat_id: int, start_dt: datetime, end_dt: datetime) -> dict[str, Any]:
-    """Berilgan vaqt oralig'idagi statistikani qaytaradi"""
     await flush_message_buffer()
     return await asyncio.to_thread(_get_stats_for_range_sync, chat_id, start_dt, end_dt)
 
@@ -577,10 +589,7 @@ def _get_stats_for_range_sync(chat_id: int, start_dt: datetime, end_dt: datetime
             if sent_at.tzinfo is None:
                 sent_at = sent_at.replace(tzinfo=TASHKENT_TZ)
 
-            start_dt_tz = start_dt.astimezone(TASHKENT_TZ) if start_dt.tzinfo else start_dt.replace(tzinfo=TASHKENT_TZ)
-            end_dt_tz = end_dt.astimezone(TASHKENT_TZ) if end_dt.tzinfo else end_dt.replace(tzinfo=TASHKENT_TZ)
-
-            if sent_at < start_dt_tz or sent_at > end_dt_tz:
+            if sent_at < start_dt or sent_at > end_dt:
                 continue
 
             filtered.append(row)
@@ -602,9 +611,8 @@ def _get_stats_for_range_sync(chat_id: int, start_dt: datetime, end_dt: datetime
         username = str(row.get("username", "")).strip()
 
         if user_id not in per_user:
-            cached_name = _get_user_fullname_sync(user_id)
-            if cached_name:
-                full_name = cached_name
+            if user_id in USER_DATA_CACHE and USER_DATA_CACHE[user_id].get("full_name"):
+                full_name = USER_DATA_CACHE[user_id]["full_name"]
 
             per_user[user_id] = {
                 "user_id": user_id,
@@ -633,67 +641,26 @@ def _get_stats_for_range_sync(chat_id: int, start_dt: datetime, end_dt: datetime
 
 
 async def get_all_users() -> list[dict[str, Any]]:
-    """Barcha foydalanuvchilarni qaytaradi"""
-    return await asyncio.to_thread(_get_all_users_sync)
-
-
-def _get_all_users_sync() -> list[dict[str, Any]]:
-    """Barcha foydalanuvchilarni synchronously qaytaradi"""
-    try:
-        ws = _get_ws_sync(WS_USERS)
-        values = _retry_sync(ws.get_all_values)
-        
-        users = []
-        for row in values[1:]:  # Birinchi qator header
-            if not row or len(row) < 1:
-                continue
-            
-            try:
-                user_id = int(str(row[0]).strip())
-                full_name = row[1] if len(row) > 1 else ""
-                username = row[2] if len(row) > 2 else ""
-                is_subscribed = row[3] if len(row) > 3 else "0"
-                
-                users.append({
-                    "user_id": user_id,
-                    "full_name": full_name,
-                    "username": username,
-                    "is_subscribed": is_subscribed,
-                })
-            except (ValueError, IndexError):
-                continue
-        
-        logging.info(f"Jami {len(users)} ta foydalanuvchi yuklandi")
-        return users
-    except Exception as e:
-        logging.error(f"get_all_users xatosi: {e}")
-        return []
+    """Barcha foydalanuvchilarni cache'dan qaytaradi"""
+    users = []
+    for user_id, data in USER_DATA_CACHE.items():
+        users.append({
+            "user_id": user_id,
+            "full_name": data.get("full_name", ""),
+            "username": data.get("username", ""),
+            "is_subscribed": data.get("is_subscribed", "0"),
+        })
+    
+    logging.info(f"Jami {len(users)} ta foydalanuvchi cache'dan yuklandi")
+    return users
 
 
 async def get_user_count() -> int:
     """Foydalanuvchilar sonini qaytaradi"""
-    users = await get_all_users()
-    return len(users)
+    return len(USER_DATA_CACHE)
 
 
-async def debug_user_fullname(user_id: int) -> str | None:
-    """Foydalanuvchi ismini debug qilish - sheetdan to'g'ridan-to'g'ri o'qiydi"""
-    await flush_message_buffer()
-    
-    def _debug_sync():
-        try:
-            ws = _get_ws_sync(WS_USERS)
-            cell = ws.find(str(user_id), in_column=1)
-            
-            if cell:
-                row = ws.row_values(cell.row)
-                logging.info(f"Debug User {user_id} - Sheet row: {row}")
-                return row[1] if len(row) > 1 else None
-            else:
-                logging.info(f"Debug User {user_id} not found in users sheet")
-                return None
-        except Exception as e:
-            logging.error(f"Debug xatosi: {e}")
-            return None
-    
-    return await asyncio.to_thread(_debug_sync)
+async def refresh_user_cache():
+    """Cache ni yangilash"""
+    await asyncio.to_thread(_warm_user_cache_sync)
+    logging.info("User cache yangilandi")
