@@ -278,7 +278,7 @@ async def register_fullname_handler(message: Message, state: FSMContext):
     else:
         await message.answer(
             f"✅ <b>Assalomu alaykum, {text}!</b>\n\n"
-            "🎉 Xush kelibsiz!\n"
+            "🎉 Xush kelibsiz!\n\n"
             "✏️ Bu yerda siz ustoz Fazliddin Burxonovga savol yo'llashingiz mumkin va test savollariga javoblar yuborishingiz mumkin ",
             parse_mode="HTML",
         )
