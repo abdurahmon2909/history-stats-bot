@@ -428,6 +428,7 @@ async def admin_reply_to_user(message: Message):
     except Exception as e:
         logging.error(f"Admin reply error: {e}")
         await message.reply(f"❌ Xatolik: {e}")
+
 # ─────────────────────────────────────────────────────────────────────────────
 # /cancel
 # ─────────────────────────────────────────────────────────────────────────────
