@@ -506,13 +506,12 @@ async def start_handler(message: Message, state: FSMContext):
     if not user:
         return
 
-    # Obunani tekshirish
     subscribed, status = await check_subscription(user.id)
 
-    # QANDAYDIR MA'LUMOTNI YOZAMIZ (ism bo'sh)
+    # BO'SH ISM EMAS — Telegram ismini vaqtincha yozamiz
     await upsert_user(
         user_id=user.id,
-        full_name="",  # DOIM BO'SH - ismni keyin so'raymiz
+        full_name=user.full_name or "",  # ← Telegram ismi (vaqtincha)
         username=user.username,
         is_subscribed=1 if subscribed else 0,
     )
@@ -564,7 +563,7 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
     
     await upsert_user(
         user_id=user.id,
-        full_name="",  # DOIM BO'SH
+        full_name=user.full_name or "",
         username=user.username,
         is_subscribed=1 if subscribed else 0,
     )
