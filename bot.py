@@ -175,7 +175,7 @@ async def start_handler(message: Message, state: FSMContext):
     await state.set_state(RegisterState.waiting_for_fullname)
     await message.answer(
         "✅ <b>Obuna tasdiqlandi!</b>\n\n"
-        "📝 Iltimos, <b>to'liq ism va familiyangizni</b> kiriting:\n"
+        "📝 Iltimos, <b>to'liq ism va familiyangizni</b> lotin harflarida kiriting:\n"
         "<i>Masalan: Murodjonov Asilbek</i>\n\n"
         "❌ Bekor qilish: /cancel",
         parse_mode="HTML",
