@@ -506,12 +506,13 @@ async def start_handler(message: Message, state: FSMContext):
     if not user:
         return
 
+    # Obunani tekshirish
     subscribed, status = await check_subscription(user.id)
 
-    # Telegramdan avtomatik ismni olmaymiz, faqat username va obuna holatini saqlaymiz
+    # QANDAYDIR MA'LUMOTNI YOZAMIZ (ism bo'sh)
     await upsert_user(
         user_id=user.id,
-        full_name="",  # BO'SH QOYAMIZ - telegramdan ism olmaymiz
+        full_name="",  # DOIM BO'SH - ismni keyin so'raymiz
         username=user.username,
         is_subscribed=1 if subscribed else 0,
     )
@@ -536,43 +537,21 @@ async def start_handler(message: Message, state: FSMContext):
         )
         return
 
-    # Foydalanuvchining ismi bor yoki yo'qligini tekshiramiz
-    has_name = await has_user_fullname(user.id)
+    # ============ MUHIM: DOIM ISM SO'RAYMIZ ============
+    # Sheetda qanday ma'lumot bo'lishidan qat'iy nazar
+    # har doim ism so'raymiz va yangilaymiz
     
-    if has_name:
-        # Ismi bor - to'g'ridan-to'g'ri xush kelibsiz xabarini yuboramiz
-        full_name = await get_user_fullname(user.id)
-        
-        if is_admin(user.id):
-            await message.answer(
-                f"✅ **Assalomu alaykum, {full_name}!**\n\n"
-                "📋 Siz admin sifatida tizimga kirdingiz.\n\n"
-                "🔽 **Admin panel:** /admin\n"
-                "📢 **Xabar yuborish:** /broadcast\n"
-                "✏️ **Ism o'zgartirish:** /editname",
-                parse_mode="HTML",
-                reply_markup=admin_main_menu_kb()
-            )
-        else:
-            await message.answer(
-                f"✅ **Assalomu alaykum, {full_name}!**\n\n"
-                "🎉 Xush kelibsiz!\n\n"
-                "📝 Botdan foydalanishingiz mumkin.\n"
-                "💬 Xabarlaringiz adminlarga yetkaziladi.\n\n"
-                "✏️ Ismingizni o'zgartirish uchun: /editname",
-                parse_mode="HTML"
-            )
-    else:
-        # Ismi yo'q - ism familiya so'raymiz
-        await state.set_state(RegisterState.waiting_for_fullname)
-        await message.answer(
-            "✅ **Obuna tasdiqlandi!**\n\n"
-            "📝 **Iltimos, TO'LIQ ismingiz va familiyangizni kiriting:**\n"
-            "Masalan: Murodjonov Asilbek\n\n"
-            "⚠️ Bu ma'lumot faqat bir marta so'raladi va hisobotlarda ko'rsatiladi.\n\n"
-            "❌ Bekor qilish: /cancel",
-            parse_mode="HTML"
-        )
+    await state.set_state(RegisterState.waiting_for_fullname)
+    await message.answer(
+        "✅ **Obuna tasdiqlandi!**\n\n"
+        "📝 **Iltimos, TO'LIQ ismingiz va familiyangizni kiriting:**\n"
+        "Masalan: Murodjonov Asilbek\n\n"
+        "⚠️ Bu ma'lumot faqat bir marta so'raladi? YO'Q - har safar so'raladi!\n"
+        "📌 Eski ma'lumotingiz yangisi bilan qayta yoziladi.\n\n"
+        "❌ Bekor qilish: /cancel",
+        parse_mode="HTML"
+    )
+
 
 @router.callback_query(F.data == "check_sub")
 async def check_subscription_callback(callback: CallbackQuery, state: FSMContext):
@@ -583,10 +562,9 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
 
     subscribed, status = await check_subscription(user.id)
     
-    # Telegramdan avtomatik ismni olmaymiz
     await upsert_user(
         user_id=user.id,
-        full_name="",  # BO'SH
+        full_name="",  # DOIM BO'SH
         username=user.username,
         is_subscribed=1 if subscribed else 0,
     )
@@ -611,43 +589,109 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
 
     await callback.answer("Obuna tasdiqlandi ✅")
 
-    # Foydalanuvchining ismi bor yoki yo'qligini tekshiramiz
-    has_name = await has_user_fullname(user.id)
+    # DOIM ISM SO'RAYMIZ
+    await state.set_state(RegisterState.waiting_for_fullname)
+    await callback.message.delete()
+    await callback.message.answer(
+        "✅ **Obuna tasdiqlandi!**\n\n"
+        "📝 **Iltimos, TO'LIQ ismingiz va familiyangizni kiriting:**\n"
+        "Masalan: Murodjonov Asilbek\n\n"
+        "⚠️ Bu ma'lumot sheetga yoziladi va hisobotlarda ko'rsatiladi.\n\n"
+        "❌ Bekor qilish: /cancel",
+        parse_mode="HTML"
+    )
+
+
+@router.message(RegisterState.waiting_for_fullname)
+async def register_fullname(message: Message, state: FSMContext):
+    user = message.from_user
+    if not user:
+        return
+
+    full_name = message.text.strip()
     
-    if has_name:
-        # Ismi bor - xush kelibsiz xabari
-        full_name = await get_user_fullname(user.id)
-        await callback.message.delete()
-        
-        if is_admin(user.id):
-            await callback.message.answer(
-                f"✅ **Assalomu alaykum, {full_name}!**\n\n"
-                "📋 Siz admin sifatida tizimga kirdingiz.\n\n"
-                "🔽 **Admin panel:** /admin\n"
-                "📢 **Xabar yuborish:** /broadcast",
-                parse_mode="HTML",
-                reply_markup=admin_main_menu_kb()
-            )
-        else:
-            await callback.message.answer(
-                f"✅ **Assalomu alaykum, {full_name}!**\n\n"
-                "🎉 Xush kelibsiz!\n\n"
-                "📝 Botdan foydalanishingiz mumkin.\n"
-                "💬 Xabarlaringiz adminlarga yetkaziladi.",
-                parse_mode="HTML"
-            )
+    # Validatsiya
+    if len(full_name) < 3:
+        await message.answer(
+            "❌ Ism va familiya kamida 3 harfdan iborat bo'lishi kerak.\n"
+            "Qaytadan kiriting:"
+        )
+        return
+    
+    # Faqat harflar, bo'sh joy va tire ruxsat etiladi
+    if not all(c.isalpha() or c.isspace() or c == '-' for c in full_name):
+        await message.answer(
+            "❌ Ism va familiya faqat harflar, bo'sh joy va ('-') dan iborat bo'lishi kerak.\n"
+            "Masalan: Murodjonov Asilbek yoki Murodjonov-Asilbek\n\n"
+            "Qaytadan kiriting:"
+        )
+        return
+    
+    # ============ MUHIM: ISMNI SHEETGA YOZISH ============
+    # update_user_fullname ismni sheetga yozadi VA cache'ni yangilaydi
+    await update_user_fullname(user.id, full_name)
+    await state.clear()
+    
+    # Xush kelibsiz xabari
+    if is_admin(user.id):
+        await message.answer(
+            f"✅ **Assalomu alaykum, {full_name}!**\n\n"
+            "📋 Siz admin sifatida tizimga kirdingiz.\n\n"
+            "🔽 **Admin panel:** /admin\n"
+            "📢 **Xabar yuborish:** /broadcast\n"
+            "✏️ **Ism o'zgartirish:** /editname",
+            parse_mode="HTML",
+            reply_markup=admin_main_menu_kb()
+        )
     else:
-        # Ismi yo'q - ism familiya so'raymiz
-        await state.set_state(RegisterState.waiting_for_fullname)
-        await callback.message.delete()
-        await callback.message.answer(
-            "✅ **Obuna tasdiqlandi!**\n\n"
-            "📝 **Iltimos, TO'LIQ ismingiz va familiyangizni kiriting:**\n"
-            "Masalan: Murodjonov Asilbek\n\n"
-            "⚠️ Bu ma'lumot faqat bir marta so'raladi va hisobotlarda ko'rsatiladi.\n\n"
-            "❌ Bekor qilish: /cancel",
+        await message.answer(
+            f"✅ **Assalomu alaykum, {full_name}!**\n\n"
+            "🎉 Xush kelibsiz!\n\n"
+            "📝 Endi siz bot orqali adminlarga xabar yuborishingiz mumkin.\n"
+            "💬 Xabarlaringiz adminlarga yetkaziladi va ular sizga javob berishi mumkin.\n\n"
+            "✏️ Ismingizni o'zgartirish uchun: /editname",
             parse_mode="HTML"
         )
+
+
+# ============ EDITNAME HAM TUZATILDI ============
+
+@router.message(Command("editname"))
+async def edit_fullname(message: Message, state: FSMContext):
+    """Ism familiyani o'zgartirish"""
+    user = message.from_user
+    if not user:
+        return
+    
+    subscribed, status = await check_subscription(user.id)
+    if status == "inaccessible":
+        await message.answer(
+            "Hozircha kanal obunasini avtomatik tekshirib bo'lmadi.\n"
+            "Keyinroq urinib ko'ring."
+        )
+        return
+    if status == "error":
+        await message.answer(
+            "Tekshiruvda xatolik bo'ldi. Keyinroq qayta urinib ko'ring."
+        )
+        return
+    if not subscribed:
+        await message.answer(
+            "Avval kanalga a'zo bo'ling.",
+            reply_markup=join_channel_kb(),
+        )
+        return
+    
+    await state.set_state(RegisterState.waiting_for_fullname)
+    await message.answer(
+        "📝 **Ism familiyangizni o'zgartirish**\n\n"
+        "Yangi to'liq ismingiz va familiyangizni kiriting:\n"
+        "Masalan: Murodjonov Asilbek\n\n"
+        "⚠️ Eski ma'lumotingiz yangisi bilan qayta yoziladi.\n\n"
+        "❌ Bekor qilish: /cancel",
+        parse_mode="HTML"
+    )
+
 
 @router.message(RegisterState.waiting_for_fullname)
 async def register_fullname(message: Message, state: FSMContext):
@@ -1384,11 +1428,14 @@ async def group_message_tracker(message: Message):
         return
     
     text = message.text or message.caption or ""
+    
+    # Sheetdan ismni olish (agar mavjud bo'lsa)
     full_name = await get_user_fullname(message.from_user.id)
     
-    # ✅ TUZATILDI: Agar ism bo'lmasa, "Ism kiritilmagan" deb yozamiz
+    # Agar sheetda ism bo'lmasa, "Ism kiritilmagan" deb yozamiz
+    # Telegram ismini HECH QACHON ishlatmaymiz!
     if not full_name:
-        full_name = "Ism kiritilmagan"  # Telegram ismini ishlatmaymiz
+        full_name = "Ism kiritilmagan"
     
     await append_group_message(
         chat_id=message.chat.id,
@@ -1401,6 +1448,8 @@ async def group_message_tracker(message: Message):
     )
 
 
+# ============ PRIVATE MESSAGE ROUTER ============
+
 @router.message(F.chat.type == ChatType.PRIVATE)
 async def private_message_router(message: Message, state: FSMContext):
     user = message.from_user
@@ -1408,14 +1457,12 @@ async def private_message_router(message: Message, state: FSMContext):
     if not user:
         return
 
-    # AGAR USER HOZIR REGISTRATION STATE DA BO'LSA
-    # bu handler ishlamasin
+    # Agar user registration state da bo'lsa, bu handler ishlamasin
     current_state = await state.get_state()
 
     if current_state == RegisterState.waiting_for_fullname:
         return
 
-    # boshqa state bo'lsa ham chiqib ketadi
     if current_state is not None:
         return
 
@@ -1424,7 +1471,7 @@ async def private_message_router(message: Message, state: FSMContext):
 
     subscribed, status = await check_subscription(user.id)
 
-    # Telegram fullname NI OLMAYMIZ
+    # DOIM BO'SH ISM BILAN YOZAMIZ
     await upsert_user(
         user_id=user.id,
         full_name="",
@@ -1452,15 +1499,15 @@ async def private_message_router(message: Message, state: FSMContext):
         )
         return
 
-    # fullname mavjudligini tekshiramiz
+    # ISM BORMI? Agar bo'lmasa, so'raymiz
     has_name = await has_user_fullname(user.id)
 
     if not has_name:
         await state.set_state(RegisterState.waiting_for_fullname)
-
         await message.answer(
             "📝 Iltimos, ism va familiyangizni kiriting:\n\n"
-            "Masalan: Murodjonov Asilbek",
+            "Masalan: Murodjonov Asilbek\n\n"
+            "❌ Bekor qilish: /cancel",
             parse_mode="HTML"
         )
         return
