@@ -223,7 +223,7 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
     await state.set_state(RegisterState.waiting_for_fullname)
     await callback.message.answer(
         "✅ <b>Obuna tasdiqlandi!</b>\n\n"
-        "📝 Iltimos, <b>to'liq ism va familiyangizni</b> <u>lotin harflarida</u> kiriting:\n"
+        "📝 Iltimos, <b>to'liq ism va familiyangizni</b> lotin harflarida kiriting:\n"
         "<i>Masalan: Murodjonov Asilbek</i>\n\n"
         "❌ Bekor qilish: /cancel",
         parse_mode="HTML",
