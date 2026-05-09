@@ -312,57 +312,6 @@ async def edit_fullname_handler(message: Message, state: FSMContext):
 # USER → ADMIN SUPPORT
 # ─────────────────────────────────────────────────────────────────────────────
 
-@router.message(
-    F.chat.type == ChatType.PRIVATE,
-    ~F.text.startswith("/"),
-)
-async def user_message_to_admin(message: Message):
-    """
-    User yozgan xabarni adminlarga forward qiladi
-    """
-    user = message.from_user
-    if not user:
-        return
-
-    # Adminning o'zi yozsa o'tkazib yuboramiz
-    if is_admin(user.id):
-        return
-
-    try:
-        full_name = await get_user_fullname(user.id)
-        full_name = full_name or user.full_name
-
-        header = (
-            f"📩 <b>Yangi murojaat</b>\n\n"
-            f"👤 Ism: {full_name}\n"
-            f"🆔 ID: <code>{user.id}</code>\n"
-            f"📎 Username: @{user.username if user.username else 'yo‘q'}"
-        )
-
-        for admin_id in ADMIN_IDS:
-            # Avval info yuboriladi
-            sent_info = await bot.send_message(
-                admin_id,
-                header,
-                parse_mode="HTML",
-            )
-
-            # Keyin user xabari forward qilinadi
-            forwarded = await message.forward(admin_id)
-
-            # Reply system uchun mapping saqlaymiz
-            SUPPORT_REPLY_MAP[forwarded.message_id] = user.id
-
-        await message.answer(
-            "✅ Xabaringiz adminlarga yuborildi.\n"
-            "✍️ Tez orada javob beriladi."
-        )
-
-    except Exception as e:
-        logging.error(f"User message forward error: {e}")
-        await message.answer("❌ Xabar yuborishda xatolik.")
-
-
 # Forward qilingan message_id -> user_id
 SUPPORT_REPLY_MAP: dict[int, int] = {}
 
