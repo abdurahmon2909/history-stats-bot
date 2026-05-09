@@ -1129,15 +1129,16 @@ async def private_message_router(message: Message, state: FSMContext):
         )
         return
 
-    # Adminga forward
-    for admin_id in ADMIN_IDS:
-        try:
-            await message.forward(chat_id=admin_id)
-        except Exception as e:
-            logging.exception("Adminga forward xato: %s", e)
+   # Adminga forward
+for admin_id in ADMIN_IDS:
+    try:
+        forwarded = await message.forward(chat_id=admin_id)
 
-    await message.answer("✅ Xabaringiz adminga yuborildi.")
+        # mapping saqlaymiz
+        SUPPORT_REPLY_MAP[forwarded.message_id] = user.id
 
+    except Exception as e:
+        logging.exception("Adminga forward xato: %s", e)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # /id
