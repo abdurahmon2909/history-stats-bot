@@ -199,10 +199,6 @@ def _upsert_user_sync(
         first_seen = cached.get("first_seen", now) or now
         new_sub = str(is_subscribed) if is_subscribed is not None else current_sub
         
-        # MUHIM: Agar yangi full_name bo'sh bo'lsa, eski nomni saqlaymiz
-        if not full_name or full_name.strip() == "":
-            full_name = cached.get("full_name", "")
-        
         values = [[
             str(user_id),
             full_name,
