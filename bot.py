@@ -1099,47 +1099,58 @@ async def group_message_tracker(message: Message):
 @router.message(F.chat.type == ChatType.PRIVATE)
 async def private_message_router(message: Message, state: FSMContext):
     user = message.from_user
+
     if not user:
         return
 
-    # Agar state mavjud bo'lsa yoki /komanda bo'lsa — tegib o'tmaymiz
+    # State yoki command bo‘lsa skip
     current_state = await state.get_state()
+
     if current_state is not None:
         return
+
     if message.text and message.text.startswith("/"):
         return
 
     subscribed, status = await check_subscription(user.id)
 
     if status in ("inaccessible", "error"):
-        await message.answer("❌ Tekshiruvda xatolik. Keyinroq urinib ko'ring.")
+        await message.answer(
+            "❌ Tekshiruvda xatolik. Keyinroq urinib ko‘ring."
+        )
         return
 
     if not subscribed:
-        await message.answer("Avval kanalga a'zo bo'ling.", reply_markup=join_channel_kb())
+        await message.answer(
+            "Avval kanalga a'zo bo‘ling.",
+            reply_markup=join_channel_kb()
+        )
         return
 
-    # Ism yo'q bo'lsa so'raymiz
+    # Ism kiritmagan bo‘lsa
     if not await has_user_fullname(user.id):
         await state.set_state(RegisterState.waiting_for_fullname)
+
         await message.answer(
             "📝 Iltimos, ism va familiyangizni kiriting:\n"
-            "<i>Masalan: Murodjonov Asilbek</i>\n\n❌ Bekor qilish: /cancel",
+            "<i>Masalan: Murodjonov Asilbek</i>\n\n"
+            "❌ Bekor qilish: /cancel",
             parse_mode="HTML",
         )
         return
 
-   # Adminga forward
-for admin_id in ADMIN_IDS:
-    try:
-        forwarded = await message.forward(chat_id=admin_id)
+    # USER XABARINI ADMINGA FORWARD
+    for admin_id in ADMIN_IDS:
+        try:
+            forwarded = await message.forward(chat_id=admin_id)
 
-        # mapping saqlaymiz
-        SUPPORT_REPLY_MAP[forwarded.message_id] = user.id
+            # mapping saqlash
+            SUPPORT_REPLY_MAP[forwarded.message_id] = user.id
 
-    except Exception as e:
-        logging.exception("Adminga forward xato: %s", e)
+        except Exception as e:
+            logging.exception(f"Forward error: {e}")
 
+    await message.answer("✅ Xabaringiz adminga yuborildi.")
 # ─────────────────────────────────────────────────────────────────────────────
 # /id
 # ─────────────────────────────────────────────────────────────────────────────
