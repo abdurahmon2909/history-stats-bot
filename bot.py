@@ -8,7 +8,7 @@ import os
 import calendar as cal_module
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-
+from aiogram.types import BotCommandScopeAllPrivateChats
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ChatMemberStatus, ChatType
 from aiogram.exceptions import TelegramBadRequest
@@ -1165,6 +1165,7 @@ async def get_id(message: Message):
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def set_commands():
+
     commands = [
         BotCommand(command="start",     description="Botni ishga tushirish"),
         BotCommand(command="admin",     description="Admin panel"),
@@ -1173,7 +1174,12 @@ async def set_commands():
         BotCommand(command="id",        description="Chat ID ni ko'rish"),
         BotCommand(command="cancel",    description="Bekor qilish"),
     ]
-    await bot.set_my_commands(commands)
+
+    # faqat private chatlarda ko‘rinadi
+    await bot.set_my_commands(
+        commands,
+        scope=BotCommandScopeAllPrivateChats()
+    )
 
 
 async def main():
