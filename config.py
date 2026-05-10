@@ -56,9 +56,7 @@ if not GROUP_CHAT_IDS:
 MAIN_GROUP_CHAT_ID = GROUP_CHAT_IDS[0]
 
 # Guruh nomlari (ixtiyoriy)
-GROUP_NAMES = {-1001716132943: "Toshkent Attestatsiya",
-    -1003903298311: "Yangi Guruh",
-    -1003967312441: "DARS"}
+GROUP_NAMES = {-1001716132943: "Toshkent Attestatsiya", -1003903298311: "Yangi Guruh", -1003967312441: "DARS"}
 for idx, group_id in enumerate(GROUP_CHAT_IDS, 1):
     # Avval maxsus nomni qidirish
     custom_name = os.getenv(f"GROUP_NAME_{abs(group_id)}", "")
