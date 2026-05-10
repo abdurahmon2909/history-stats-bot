@@ -200,11 +200,6 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
             style_group_title,
         )
     )
-    
-    if group_id:
-        story.append(
-            Paragraph(f"Guruh ID: <b>{group_id}</b>", style_info),
-        )
 
     # ===== ASOSIY SARLAVHA =====
     story.append(
