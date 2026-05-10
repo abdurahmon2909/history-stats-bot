@@ -578,7 +578,12 @@ async def new_broadcast_cb(callback: CallbackQuery, state: FSMContext):
     )
     await callback.answer()
 
-
+@router.message(Command("id"))
+async def get_id(message: Message):
+    await message.answer(
+        f"Chat ID: <code>{message.chat.id}</code>",
+        parse_mode="HTML",
+    )
 # ─────────────────────────────────────────────────────────────────────────────
 # ADMIN PANEL
 # ─────────────────────────────────────────────────────────────────────────────
