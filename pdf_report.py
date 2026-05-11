@@ -303,6 +303,7 @@ def build_pdf_report(stats: dict, period_label: str, file_path: str):
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("FONTSIZE", (0, 0), (-1, -1), 9),
         ]
+        top3_table.setStyle(TableStyle(top3_style))
         
         for row_idx, u in enumerate(top3, start=1):
             cat = u["category"]
