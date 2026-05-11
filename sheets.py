@@ -473,28 +473,60 @@ async def get_stats_for_range(chat_id: int, start_dt: datetime, end_dt: datetime
     return await asyncio.to_thread(_get_stats_for_range_sync, chat_id, start_dt, end_dt)
 
 
-def _get_stats_for_range_sync(chat_id: int, start_dt: datetime, end_dt: datetime) -> dict[str, Any]:
+def _get_stats_for_range_sync(
+    chat_id: int,
+    start_dt: datetime,
+    end_dt: datetime
+) -> dict[str, Any]:
+
     ws = _get_ws_sync(WS_MESSAGES)
     rows = _retry_sync(ws.get_all_records)
 
+    # ❗ start/end ni Tashkent timezone ga o'tkazamiz
+    if start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=TASHKENT_TZ)
+    else:
+        start_dt = start_dt.astimezone(TASHKENT_TZ)
+
+    if end_dt.tzinfo is None:
+        end_dt = end_dt.replace(tzinfo=TASHKENT_TZ)
+    else:
+        end_dt = end_dt.astimezone(TASHKENT_TZ)
+
     filtered = []
+
     for row in rows:
+
         try:
             if int(str(row.get("chat_id", "0")).strip()) != int(chat_id):
                 continue
+
             user_id = int(str(row.get("user_id", "0")).strip())
+
             if user_id in EXCLUDED_USER_IDS:
                 continue
+
             sent_at_raw = str(row.get("sent_at", "")).strip()
+
             if not sent_at_raw:
                 continue
+
             sent_at = datetime.fromisoformat(sent_at_raw)
+
+            # ❗ timezone yo'q bo'lsa Tashkent deb olamiz
             if sent_at.tzinfo is None:
                 sent_at = sent_at.replace(tzinfo=TASHKENT_TZ)
-            if sent_at < start_dt or sent_at > end_dt:
+            else:
+                sent_at = sent_at.astimezone(TASHKENT_TZ)
+
+            # ❗ oralig'ni tekshirish
+            if not (start_dt <= sent_at <= end_dt):
                 continue
+
             filtered.append(row)
-        except Exception:
+
+        except Exception as e:
+            logging.error(f"Range stats error: {e}")
             continue
 
     return _build_stats(filtered, start_dt, end_dt)
