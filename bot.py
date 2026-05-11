@@ -911,7 +911,7 @@ async def select_minute_cb(callback: CallbackQuery, state: FSMContext):
 
     if current_state == AdminReportState.waiting_for_start_time:
         start_date = data.get("start_date")
-        start_dt = datetime.combine(start_date, datetime.min.time().replace(hour=hour, minute=minute))
+        start_dt = datetime.combine(start_date,datetime.min.time().replace(hour=hour,minute=minute),tzinfo=timezone.utc)
         await state.update_data(start_datetime=start_dt)
         await state.set_state(AdminReportState.waiting_for_end_date)
         await callback.message.edit_text(
@@ -925,7 +925,7 @@ async def select_minute_cb(callback: CallbackQuery, state: FSMContext):
         end_date   = data.get("end_date")
         start_dt   = data.get("start_datetime")
         group_id   = data.get("selected_group_id")
-        end_dt     = datetime.combine(end_date, datetime.min.time().replace(hour=hour, minute=minute))
+        end_dt     = datetime.combine(end_date, datetime.min.time().replace(hour=hour, minute=minute), tzinfo=timezone.utc)
 
         if end_dt < start_dt:
             await callback.answer("❌ Tugash vaqti boshlang'ich vaqtdan oldin bo'lmasin!", show_alert=True)
