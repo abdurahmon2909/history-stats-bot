@@ -1125,18 +1125,33 @@ async def _generate_and_send_report(target, group_id: int, group_name: str,
 
 @router.message(F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}))
 async def group_message_tracker(message: Message):
+
+    # Faqat kerakli guruhlar
     if message.chat.id not in GROUP_CHAT_IDS:
         return
+
+    # Botlarni ignore
     if not message.from_user or message.from_user.is_bot:
         return
 
+    # Xabar matni
     text = message.text or message.caption or ""
 
-    # Cache'dan haqiqiy ismni olamiz
+    # Cache'dan ism olish
     from sheets import USER_DATA_CACHE
-    cached_name = USER_DATA_CACHE.get(message.from_user.id, {}).get("full_name", "").strip()
-    display_name = cached_name if cached_name else "Ism kiritilmagan"
 
+    cached_name = USER_DATA_CACHE.get(
+        message.from_user.id,
+        {}
+    ).get("full_name", "").strip()
+
+    display_name = (
+        cached_name
+        if cached_name
+        else "Ism kiritilmagan"
+    )
+
+    # DB ga yozish
     await append_group_message(
         chat_id=message.chat.id,
         message_id=message.message_id,
@@ -1144,7 +1159,10 @@ async def group_message_tracker(message: Message):
         full_name=display_name,
         username=message.from_user.username,
         text=text,
-        sent_at=message.date.astimezone(timezone.utc),
+
+        # ❗ TZ aware datetime
+        # Telegramning o'z vaqtini saqlaymiz
+        sent_at=message.date,
     )
 
 
