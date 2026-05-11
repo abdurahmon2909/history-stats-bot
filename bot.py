@@ -899,49 +899,96 @@ async def select_hour_cb(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("time:minute:"))
 async def select_minute_cb(callback: CallbackQuery, state: FSMContext):
+
     if not is_admin(callback.from_user.id):
         await callback.answer("Siz admin emassiz", show_alert=True)
         return
 
-    parts  = callback.data.split(":")
-    hour   = int(parts[2])
+    parts = callback.data.split(":")
+    hour = int(parts[2])
     minute = int(parts[3])
+
     current_state = await state.get_state()
     data = await state.get_data()
 
+    # ─────────────────────────
+    # BOSHLANISH VAQTI
+    # ─────────────────────────
     if current_state == AdminReportState.waiting_for_start_time:
+
         start_date = data.get("start_date")
-        start_dt = datetime.combine(start_date,datetime.min.time().replace(hour=hour,minute=minute),tzinfo=timezone.utc)
+
+        start_dt = datetime.combine(
+            start_date,
+            datetime.min.time().replace(
+                hour=hour,
+                minute=minute
+            )
+        ).replace(tzinfo=timezone.utc)
+
         await state.update_data(start_datetime=start_dt)
+
         await state.set_state(AdminReportState.waiting_for_end_date)
+
         await callback.message.edit_text(
-            f"✅ Boshlanish vaqti: <b>{start_dt.strftime('%Y-%m-%d %H:%M')}</b>\n\n"
-            "📅 TUGASH SANASINI tanlang:",
+            f"✅ Boshlanish vaqti: "
+            f"<b>{start_dt.strftime('%Y-%m-%d %H:%M')}</b>\n\n"
+            f"📅 TUGASH SANASINI tanlang:",
             parse_mode="HTML",
-            reply_markup=create_calendar_kb(start_date.year, start_date.month),
+            reply_markup=create_calendar_kb(
+                start_date.year,
+                start_date.month
+            ),
         )
 
+    # ─────────────────────────
+    # TUGASH VAQTI
+    # ─────────────────────────
     elif current_state == AdminReportState.waiting_for_end_time:
-        end_date   = data.get("end_date")
-        start_dt   = data.get("start_datetime")
-        group_id   = data.get("selected_group_id")
-        end_dt     = datetime.combine(end_date, datetime.min.time().replace(hour=hour, minute=minute), tzinfo=timezone.utc)
+
+        end_date = data.get("end_date")
+        start_dt = data.get("start_datetime")
+        group_id = data.get("selected_group_id")
+
+        end_dt = datetime.combine(
+            end_date,
+            datetime.min.time().replace(
+                hour=hour,
+                minute=minute
+            )
+        ).replace(tzinfo=timezone.utc)
 
         if end_dt < start_dt:
-            await callback.answer("❌ Tugash vaqti boshlang'ich vaqtdan oldin bo'lmasin!", show_alert=True)
+            await callback.answer(
+                "❌ Tugash vaqti boshlang'ich vaqtdan oldin bo'lmasin!",
+                show_alert=True
+            )
             return
 
-        group_name = GROUP_NAMES.get(group_id, f"Guruh {group_id}")
+        group_name = GROUP_NAMES.get(
+            group_id,
+            f"Guruh {group_id}"
+        )
+
         await state.clear()
 
         await callback.message.edit_text(
             f"📊 <b>Hisobot tayyorlanmoqda...</b>\n\n"
             f"🏢 {group_name}\n"
-            f"📅 {start_dt.strftime('%Y-%m-%d %H:%M')} → {end_dt.strftime('%Y-%m-%d %H:%M')}",
+            f"📅 "
+            f"{start_dt.strftime('%Y-%m-%d %H:%M')} "
+            f"→ "
+            f"{end_dt.strftime('%Y-%m-%d %H:%M')}",
             parse_mode="HTML",
         )
 
-        await _generate_and_send_report(callback.message, group_id, group_name, start_dt, end_dt)
+        await _generate_and_send_report(
+            callback.message,
+            group_id,
+            group_name,
+            start_dt,
+            end_dt,
+        )
 
     await callback.answer()
 
