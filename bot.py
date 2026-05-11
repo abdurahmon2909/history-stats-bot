@@ -676,17 +676,33 @@ async def quick_group_selected(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("quick_final:"))
 async def quick_report_final(callback: CallbackQuery):
+
     if not is_admin(callback.from_user.id):
-        await callback.answer("Siz admin emassiz", show_alert=True)
+        await callback.answer(
+            "Siz admin emassiz",
+            show_alert=True
+        )
         return
 
     parts = callback.data.split(":")
     group_id = int(parts[1])
-    hours    = int(parts[2])
-    group_name = GROUP_NAMES.get(group_id, f"Guruh {group_id}")
+    hours = int(parts[2])
 
-    labels = {2: "2 soat", 4: "4 soat", 8: "8 soat",
-              24: "1 kun", 72: "3 kun", 168: "1 hafta", 720: "1 oy"}
+    group_name = GROUP_NAMES.get(
+        group_id,
+        f"Guruh {group_id}"
+    )
+
+    labels = {
+        2: "2 soat",
+        4: "4 soat",
+        8: "8 soat",
+        24: "1 kun",
+        72: "3 kun",
+        168: "1 hafta",
+        720: "1 oy",
+    }
+
     period_label = labels.get(hours, f"{hours} soat")
 
     await callback.message.edit_text(
@@ -696,13 +712,30 @@ async def quick_report_final(callback: CallbackQuery):
     )
 
     try:
-        stats = await get_stats_for_hours(group_id, hours)
+
+        stats = await get_stats_for_hours(
+            group_id,
+            hours
+        )
+
         stats["group_name"] = group_name
-        stats["group_id"]   = group_id
+        stats["group_id"] = group_id
 
         os.makedirs("reports", exist_ok=True)
-        filename = f"reports/report_{group_name.replace(' ','_')}_{hours}h_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        await asyncio.to_thread(build_pdf_report, stats, period_label, filename)
+
+        filename = (
+            f"reports/report_"
+            f"{group_name.replace(' ', '_')}_"
+            f"{hours}h_"
+            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        )
+
+        await asyncio.to_thread(
+            build_pdf_report,
+            stats,
+            period_label,
+            filename
+        )
 
         await callback.message.answer(
             f"🎯 <b>Hisobot tayyor!</b>\n\n"
@@ -712,16 +745,27 @@ async def quick_report_final(callback: CallbackQuery):
             f"👤 Faol userlar: {len(stats['users'])}",
             parse_mode="HTML",
         )
+
         await callback.message.answer_document(
-            FSInputFile(filename),
+            FSInputFile(
+                filename,
+                filename=f"HISOBOT - {group_name} guruhi.pdf"
+            ),
             caption=f"📊 {group_name} — So'nggi {period_label}",
         )
-        await callback.message.answer("👋 Admin panel", reply_markup=admin_main_menu_kb())
+
+        await callback.message.answer(
+            "👋 Admin panel",
+            reply_markup=admin_main_menu_kb()
+        )
+
     except Exception as e:
-        await callback.message.answer(f"❌ Xatolik: {e}")
+
+        await callback.message.answer(
+            f"❌ Xatolik: {e}"
+        )
 
     await callback.answer()
-
 
 # ─────────────── Qo'lda vaqt tanlash ───────────────
 
@@ -1089,20 +1133,45 @@ def _parse_time_text(text: str) -> tuple[int, int]:
     return h, m
 
 
-async def _generate_and_send_report(target, group_id: int, group_name: str,
-                                    start_dt: datetime, end_dt: datetime):
-    """PDF yaratib yuboradi. target = Message."""
-    period_label = f"{start_dt.strftime('%Y-%m-%d %H:%M')} – {end_dt.strftime('%Y-%m-%d %H:%M')}"
-    stats = await get_stats_for_range(group_id, start_dt, end_dt)
+async def _generate_and_send_report(
+    target,
+    group_id: int,
+    group_name: str,
+    start_dt: datetime,
+    end_dt: datetime,
+):
+    """PDF yaratib yuboradi."""
+
+    period_label = (
+        f"{start_dt.strftime('%Y-%m-%d %H:%M')} "
+        f"– "
+        f"{end_dt.strftime('%Y-%m-%d %H:%M')}"
+    )
+
+    stats = await get_stats_for_range(
+        group_id,
+        start_dt,
+        end_dt
+    )
+
     stats["group_name"] = group_name
-    stats["group_id"]   = group_id
+    stats["group_id"] = group_id
 
     os.makedirs("reports", exist_ok=True)
+
     filename = (
-        f"reports/report_{group_name.replace(' ','_')}_"
-        f"{start_dt.strftime('%Y%m%d_%H%M')}_{end_dt.strftime('%Y%m%d_%H%M')}.pdf"
+        f"reports/report_"
+        f"{group_name.replace(' ', '_')}_"
+        f"{start_dt.strftime('%Y%m%d_%H%M')}_"
+        f"{end_dt.strftime('%Y%m%d_%H%M')}.pdf"
     )
-    await asyncio.to_thread(build_pdf_report, stats, period_label, filename)
+
+    await asyncio.to_thread(
+        build_pdf_report,
+        stats,
+        period_label,
+        filename
+    )
 
     await target.answer(
         f"🎯 <b>Hisobot tayyor!</b>\n\n"
@@ -1112,11 +1181,19 @@ async def _generate_and_send_report(target, group_id: int, group_name: str,
         f"👤 Faol userlar: {len(stats['users'])}",
         parse_mode="HTML",
     )
+
     await target.answer_document(
-        FSInputFile(filename),
+        FSInputFile(
+            filename,
+            filename=f"HISOBOT - {group_name} guruhi.pdf"
+        ),
         caption=f"📊 {group_name} — {period_label}",
     )
-    await target.answer("👋 Admin panel", reply_markup=admin_main_menu_kb())
+
+    await target.answer(
+        "👋 Admin panel",
+        reply_markup=admin_main_menu_kb()
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
