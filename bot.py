@@ -1211,6 +1211,76 @@ async def group_message_tracker(message: Message):
     if not message.from_user or message.from_user.is_bot:
         return
 
+    # ─────────────────────────────────────────
+    # LINK BLOKER
+    # ─────────────────────────────────────────
+
+    LINK_REGEX = re.compile(
+        r"(https?://\S+|www\.\S+|t\.me/\S+|telegram\.me/\S+)",
+        re.IGNORECASE
+    )
+
+    try:
+
+        member = await message.bot.get_chat_member(
+            chat_id=message.chat.id,
+            user_id=message.from_user.id
+        )
+
+        # Adminlarga ruxsat
+        if member.status not in [
+            ChatMemberStatus.ADMINISTRATOR,
+            ChatMemberStatus.CREATOR
+        ]:
+
+            has_link = False
+
+            # Oddiy text
+            if message.text and LINK_REGEX.search(message.text):
+                has_link = True
+
+            # Caption
+            if message.caption and LINK_REGEX.search(message.caption):
+                has_link = True
+
+            # Telegram entities
+            if message.entities:
+                for entity in message.entities:
+                    if entity.type in ["url", "text_link"]:
+                        has_link = True
+                        break
+
+            # Caption entities
+            if message.caption_entities:
+                for entity in message.caption_entities:
+                    if entity.type in ["url", "text_link"]:
+                        has_link = True
+                        break
+
+            # Link topildi
+            if has_link:
+
+                await message.delete()
+
+                await message.answer(
+                    f"{message.from_user.full_name}, guruhga link tashlamang!"
+                )
+
+                logging.info(
+                    f"Link o‘chirildi | "
+                    f"User: {message.from_user.id} | "
+                    f"Chat: {message.chat.id}"
+                )
+
+                return
+
+    except Exception as e:
+        logging.error(f"Link bloklashda xato: {e}")
+
+    # ─────────────────────────────────────────
+    # XABAR TRACKER
+    # ─────────────────────────────────────────
+
     # Xabar matni
     text = message.text or message.caption or ""
 
@@ -1237,11 +1307,9 @@ async def group_message_tracker(message: Message):
         username=message.from_user.username,
         text=text,
 
-        # ❗ TZ aware datetime
-        # Telegramning o'z vaqtini saqlaymiz
+        # Telegram vaqtini saqlash
         sent_at=message.date,
     )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PRIVATE XABARLAR
