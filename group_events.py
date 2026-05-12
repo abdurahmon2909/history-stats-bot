@@ -62,54 +62,52 @@ LINK_REGEX = re.compile(
 @router.message(F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}))
 async def block_links_handler(message: Message):
 
+    print("======== HANDLER ISHLADI ========")
+    print("TEXT:", message.text)
+    print("CAPTION:", message.caption)
+    print("ENTITIES:", message.entities)
+
     try:
-        # Adminlarni tekshirish
         member = await message.bot.get_chat_member(
             chat_id=message.chat.id,
             user_id=message.from_user.id
         )
 
-        # Adminlarga ruxsat
+        print("STATUS:", member.status)
+
         if member.status in ["administrator", "creator"]:
+            print("ADMIN EKAN")
             return
 
         has_link = False
 
-        # TEXT ichidan regex bilan tekshirish
+        if message.text:
+            print("TEXT BOR")
+
         if message.text and LINK_REGEX.search(message.text):
+            print("REGEX LINK TOPDI")
             has_link = True
 
-        # CAPTION ichidan regex bilan tekshirish
-        if message.caption and LINK_REGEX.search(message.caption):
-            has_link = True
-
-        # Telegram entity tekshirish
         if message.entities:
-            for entity in message.entities:
-                if entity.type in ["url", "text_link"]:
-                    has_link = True
-                    break
+            print("ENTITY BOR")
 
-        # Caption entity tekshirish
-        if message.caption_entities:
-            for entity in message.caption_entities:
+            for entity in message.entities:
+                print("ENTITY TYPE:", entity.type)
+
                 if entity.type in ["url", "text_link"]:
+                    print("ENTITY LINK TOPDI")
                     has_link = True
-                    break
+
+        print("HAS_LINK:", has_link)
 
         if has_link:
+            print("DELETE QILAMAN")
 
-            # Xabarni o‘chirish
             await message.delete()
 
-            # Ogohlantirish
             await message.answer(
                 f"{message.from_user.full_name}, guruhga link tashlamang!"
             )
 
-            logging.info(
-                f"Link o‘chirildi | User: {message.from_user.id}"
-            )
-
     except Exception as e:
-        logging.error(f"Link bloklashda xato: {e}")
+        print("ERROR:", e)
