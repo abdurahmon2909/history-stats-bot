@@ -59,13 +59,13 @@ LINK_REGEX = re.compile(
 )
 
 
-@router.message(F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}))
+@router.message()
 async def block_links_handler(message: Message):
 
-    print("======== HANDLER ISHLADI ========")
-    print("TEXT:", message.text)
-    print("CAPTION:", message.caption)
-    print("ENTITIES:", message.entities)
+    if message.chat.type not in ["group", "supergroup"]:
+        return
+
+    print("HANDLER ISHLADI")
 
     try:
         member = await message.bot.get_chat_member(
@@ -73,36 +73,30 @@ async def block_links_handler(message: Message):
             user_id=message.from_user.id
         )
 
-        print("STATUS:", member.status)
-
         if member.status in ["administrator", "creator"]:
-            print("ADMIN EKAN")
             return
 
         has_link = False
 
-        if message.text:
-            print("TEXT BOR")
-
         if message.text and LINK_REGEX.search(message.text):
-            print("REGEX LINK TOPDI")
+            has_link = True
+
+        if message.caption and LINK_REGEX.search(message.caption):
             has_link = True
 
         if message.entities:
-            print("ENTITY BOR")
-
             for entity in message.entities:
-                print("ENTITY TYPE:", entity.type)
-
                 if entity.type in ["url", "text_link"]:
-                    print("ENTITY LINK TOPDI")
                     has_link = True
+                    break
 
-        print("HAS_LINK:", has_link)
+        if message.caption_entities:
+            for entity in message.caption_entities:
+                if entity.type in ["url", "text_link"]:
+                    has_link = True
+                    break
 
         if has_link:
-            print("DELETE QILAMAN")
-
             await message.delete()
 
             await message.answer(
