@@ -5,7 +5,6 @@ import logging
 from aiogram import Router, F
 from aiogram.enums import ChatType
 from aiogram.types import Message
-import re
 
 router = Router()
 
@@ -54,20 +53,8 @@ async def auto_delete_leave_message(message: Message):
     except Exception as e:
         logging.error(f"Chiqish xabarini o'chirishda xato: {e}")
 
-LINK_REGEX = re.compile(
-    r"(https?://\S+|www\.\S+|t\.me/\S+|telegram\.me/\S+)",
-    re.IGNORECASE
-)
-
-
 @router.message(F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}))
 async def block_links_handler(message: Message):
-    """
-    Guruhga link tashlashni bloklaydi
-    """
-
-    if not message.text:
-        return
 
     try:
         # Adminlarni tekshirish
@@ -80,19 +67,31 @@ async def block_links_handler(message: Message):
         if member.status in ["administrator", "creator"]:
             return
 
-        # Link tekshirish
-        if LINK_REGEX.search(message.text):
+        has_link = False
 
-            # Xabarni o‘chirish
+        # Oddiy textdagi linklar
+        if message.entities:
+            for entity in message.entities:
+                if entity.type in ["url", "text_link"]:
+                    has_link = True
+                    break
+
+        # Captiondagi linklar (rasm/video bilan)
+        if message.caption_entities:
+            for entity in message.caption_entities:
+                if entity.type in ["url", "text_link"]:
+                    has_link = True
+                    break
+
+        if has_link:
             await message.delete()
 
-            # Ogohlantirish
             await message.answer(
                 f"{message.from_user.full_name}, guruhga link tashlamang!"
             )
 
             logging.info(
-                f"Link o‘chirildi | User: {message.from_user.id} | Chat: {message.chat.id}"
+                f"Link o‘chirildi | User: {message.from_user.id}"
             )
 
     except Exception as e:
